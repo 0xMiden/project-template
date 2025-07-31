@@ -1,0 +1,27 @@
+#!/bin/bash
+#
+# This is a postinstallation script so the service can be configured and started when requested.
+
+# user is expected by the systemd service file and `/opt/<user>` is its working directory,
+# TODO(template) update for the binary
+sudo adduser --disabled-password --disabled-login --shell /usr/sbin/nologin --quiet --system --no-create-home --home /nonexistent miden-mybinary
+
+# Working folder.
+if [ -d "/opt/miden-mybinary" ]
+then
+    echo "Directory /opt/miden-mybinary exists."
+else
+    mkdir -p /opt/miden-mybinary
+fi
+sudo chown -R miden-mybinary /opt/miden-mybinary
+
+# Configuration folder
+if [ -d "/etc/opt/miden-mybinary" ]
+then
+    echo "Directory /etc/opt/miden-mybinary exists."
+else
+    mkdir -p /etc/opt/miden-mybinary
+fi
+sudo chown -R miden-mybinary /etc/opt/miden-mybinary
+
+sudo systemctl daemon-reload

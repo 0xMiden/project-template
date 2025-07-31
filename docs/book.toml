@@ -1,0 +1,16 @@
+[book]
+authors      = ["Miden contributors"]
+description  = "TODO(template) update for the project"
+language     = "en"
+multilingual = false
+title        = "TODO(template) update for the project"
+
+[output.html]
+git-repository-url = "TODO(template) update for the project"
+
+[preprocessor.katex]
+after = ["links"]
+
+[preprocessor.alerts]
+
+[output.linkcheck]
