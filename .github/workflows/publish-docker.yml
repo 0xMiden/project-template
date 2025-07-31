@@ -1,0 +1,35 @@
+name: Publish Docker Image
+
+on:
+  release:
+    types: [prereleased, released]
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (E.G. v0.10.0-rc.1, v0.10.0). Corresponding git tag must already exist."
+        required: true
+        type: string
+
+env:
+  version: ${{ inputs.version || github.ref_name }}
+
+
+jobs:
+  publish:
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+      attestations: write
+    uses: 0xMiden/.github/.github/workflows/publish-docker.yml@main
+    with:
+      component: mybinary # TODO(template) update for the project
+      version: ${{ env.version }}
+    secrets:
+      gh_token: ${{ secrets.GITHUB_TOKEN }}
+      aws_region: ${{ secrets.AWS_REGION }}
+      aws_role: ${{ secrets.AWS_ROLE }}
+      aws_cache_bucket: ${{ secrets.AWS_CACHE_BUCKET }}
+
+    

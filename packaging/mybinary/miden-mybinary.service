@@ -1,0 +1,17 @@
+# TODO(template) update for the binary
+[Unit]
+Description=Miden mybinary
+Wants=network-online.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=exec
+Environment=""
+EnvironmentFile=/lib/systemd/system/miden-mybinary.env
+ExecStart=/usr/bin/miden-binary
+WorkingDirectory=/opt/miden-binary
+User=miden-binary
+RestartSec=5
+Restart=always

@@ -22,3 +22,7 @@ env/
 node_modules/
 *DS_Store
 *.iml
+book/
+
+# TODO(template) uncomment if not a binary
+# Cargo.lock

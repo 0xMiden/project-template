@@ -1,0 +1,10 @@
+#!/bin/bash
+#
+###############
+# Remove miden mybinary installs
+# TODO(template) update for the binary
+##############
+sudo rm -rf /lib/systemd/system/miden-mybinary.service
+sudo rm -rf /etc/opt/miden-mybinary
+sudo deluser miden-mybinary
+sudo systemctl daemon-reload

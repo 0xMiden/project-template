@@ -1,0 +1,10 @@
+[workspace]
+changelog_update = false # For now we have our own changelog.
+release_always   = true  # Without the tracking PR, it would never trigger unless `true`.
+
+git_release_enable = false
+git_tag_enable     = false
+
+[[package]]
+# TODO(template) update for the project
+name = "miden-mycrate"

@@ -1,0 +1,9 @@
+name: changelog
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+jobs:
+  changelog:
+    uses: 0xMiden/.github/.github/workflows/changelog.yml@main
