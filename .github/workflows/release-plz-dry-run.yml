@@ -1,0 +1,14 @@
+name: Release-plz (dry-run)
+
+on:
+  push:
+    branches: [main, next]
+
+jobs:
+  release-plz-dry-run-release:
+    permissions:
+      contents: read
+    uses: 0xMiden/.github/.github/workflows/release-plz-dry-run.yml@main
+    secrets:
+      gh_token: ${{ secrets.GITHUB_TOKEN }}
+      cargo_registry_token: "test-dry-run"
