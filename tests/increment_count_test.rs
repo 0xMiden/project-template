@@ -146,7 +146,6 @@ async fn increment_counter_with_note() -> Result<(), ClientError> {
     // -------------------------------------------------------------------------
     // STEP 3: Deploy Network Account
     // -------------------------------------------------------------------------
-
     let script_code =
         fs::read_to_string(Path::new("./masm/scripts/increment_script.masm")).unwrap();
 
@@ -197,12 +196,12 @@ async fn increment_counter_with_note() -> Result<(), ClientError> {
     println!("increment note created, waiting for onchain commitment");
 
     // -------------------------------------------------------------------------
-    // STEP 4: Wait for Network Note Creation
+    // STEP 5: Wait for Network Note Creation
     // -------------------------------------------------------------------------
     wait_for_note(&mut client, None, &increment_note).await?;
 
     // -------------------------------------------------------------------------
-    // STEP 5: Validate Updated State
+    // STEP 6: Validate Updated State
     // -------------------------------------------------------------------------
     sleep(Duration::from_secs(5)).await;
 
