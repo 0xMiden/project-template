@@ -6,14 +6,14 @@ use miden_client::{
     crypto::SecretKey,
     keystore::FilesystemKeyStore,
     note::{
-        Note, NoteAssets, NoteExecutionHint, NoteExecutionMode, NoteInputs, NoteMetadata,
-        NoteRecipient, NoteRelevance, NoteScript, NoteTag, NoteType,
+        Note, NoteAssets, NoteExecutionHint, NoteInputs, NoteMetadata, NoteRecipient,
+        NoteRelevance, NoteScript, NoteTag, NoteType,
     },
     rpc::{Endpoint, TonicRpcClient},
     store::{InputNoteRecord, NoteFilter},
     transaction::{OutputNote, TransactionRequestBuilder, TransactionScript},
 };
-use miden_lib::account::{auth::RpoFalcon512, wallets::BasicWallet};
+use miden_lib::account::wallets::BasicWallet;
 use miden_lib::transaction::TransactionKernel;
 use miden_objects::{
     account::AccountComponent,
@@ -67,12 +67,12 @@ pub async fn instantiate_client(
 /// # Returns
 ///
 /// Returns a `Result` containing the created `Note` if successful, or an `Error` if creation fails.
-pub async fn create_public_note(
+pub async fn create_network_note(
     client: &mut Client,
     note_code: String,
     account_library: Library,
     creator_account: Account,
-    assets: NoteAssets,
+    counter_contract_id: AccountId,
 ) -> Result<Note, Error> {
     let assembler = TransactionKernel::assembler()
         .with_library(&account_library)
@@ -84,17 +84,17 @@ pub async fn create_public_note(
     let note_inputs = NoteInputs::new([].to_vec()).unwrap();
     let recipient = NoteRecipient::new(serial_num, note_script, note_inputs.clone());
 
-    let tag = NoteTag::for_public_use_case(0, 0, NoteExecutionMode::Local).unwrap();
+    let tag = NoteTag::from_account_id(counter_contract_id);
     let metadata = NoteMetadata::new(
         creator_account.id(),
         NoteType::Public,
         tag,
-        NoteExecutionHint::always(),
+        NoteExecutionHint::none(),
         Felt::new(0),
     )
     .unwrap();
 
-    let note = Note::new(assets, metadata, recipient);
+    let note = Note::new(NoteAssets::default(), metadata, recipient);
 
     let note_req = TransactionRequestBuilder::new()
         .own_output_notes(vec![OutputNote::Full(note.clone())])
@@ -112,8 +112,7 @@ pub async fn create_public_note(
         "View transaction on MidenScan: https://testnet.midenscan.com/tx/{:?}",
         tx_id
     );
-    // @dev fails here:
-    // client.sync_state().await.unwrap();
+    client.sync_state().await.unwrap();
     Ok(note)
 }
 
@@ -139,11 +138,27 @@ pub async fn create_basic_account(
     let mut init_seed = [0_u8; 32];
     client.rng().fill_bytes(&mut init_seed);
 
+    let assembler = TransactionKernel::assembler().with_debug_mode(true);
+    let incr_nonce_code = fs::read_to_string(Path::new("./masm/auth/no_auth.masm")).unwrap();
+
+    let incr_nonce_component = AccountComponent::compile(
+        incr_nonce_code.to_string(),
+        assembler.clone(),
+        vec![StorageSlot::Value([
+            Felt::new(0),
+            Felt::new(0),
+            Felt::new(0),
+            Felt::new(0),
+        ])],
+    )
+    .unwrap()
+    .with_supports_all_types();
+
     let key_pair = SecretKey::with_rng(client.rng());
     let builder = AccountBuilder::new(init_seed)
         .account_type(AccountType::RegularAccountUpdatableCode)
-        .storage_mode(AccountStorageMode::Public)
-        .with_auth_component(RpoFalcon512::new(key_pair.public_key().clone()))
+        .storage_mode(AccountStorageMode::Network)
+        .with_auth_component(incr_nonce_component)
         .with_component(BasicWallet);
     let (account, seed) = builder.build().unwrap();
     client.add_account(&account, Some(seed), false).await?;
@@ -179,7 +194,7 @@ pub async fn create_no_auth_component() -> Result<AccountComponent, Error> {
     Ok(no_auth_component)
 }
 
-/// Creates a public immutable contract account from the provided MASM code.
+/// Creates a public immutable network smart contract account from the provided MASM code.
 ///
 /// This function compiles the provided account code into a contract with immutable code,
 /// public storage mode, and no authentication requirements. The contract is initialized
@@ -194,7 +209,7 @@ pub async fn create_no_auth_component() -> Result<AccountComponent, Error> {
 ///
 /// Returns a `Result` containing a tuple of the created contract `Account` and its seed `Word`,
 /// or a `ClientError` if contract creation fails.
-pub async fn create_public_immutable_contract(
+pub async fn create_network_account(
     client: &mut Client,
     account_code: &str,
 ) -> Result<(Account, Word), ClientError> {
@@ -218,7 +233,7 @@ pub async fn create_public_immutable_contract(
     let no_auth_component = create_no_auth_component().await.unwrap();
     let (counter_contract, counter_seed) = AccountBuilder::new(init_seed)
         .account_type(AccountType::RegularAccountImmutableCode)
-        .storage_mode(AccountStorageMode::Public)
+        .storage_mode(AccountStorageMode::Network)
         .with_auth_component(no_auth_component)
         .with_component(counter_component.clone())
         .build()

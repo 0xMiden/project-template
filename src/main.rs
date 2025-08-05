@@ -1,11 +1,13 @@
 use std::{fs, path::Path};
 
 use template::common::{
-    create_library, create_public_immutable_contract, create_tx_script, delete_keystore_and_store,
-    instantiate_client,
+    create_basic_account, create_library, create_network_account, create_network_note,
+    create_tx_script, delete_keystore_and_store, instantiate_client, wait_for_note,
 };
 
-use miden_client::{Word, rpc::Endpoint, transaction::TransactionRequestBuilder};
+use miden_client::{
+    Word, keystore::FilesystemKeyStore, rpc::Endpoint, transaction::TransactionRequestBuilder,
+};
 use miden_objects::account::NetworkId;
 use tokio::time::{Duration, sleep};
 
@@ -13,36 +15,47 @@ use tokio::time::{Duration, sleep};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     delete_keystore_and_store(None).await;
 
-    // -------------------------------------------------------------------------
-    // Instantiate client
-    // -------------------------------------------------------------------------
     let endpoint = Endpoint::testnet();
-    let mut client = instantiate_client(endpoint, None).await.unwrap();
+    let mut client = instantiate_client(endpoint.clone(), None).await.unwrap();
+
+    let keystore = FilesystemKeyStore::new("./keystore".into()).unwrap();
 
     let sync_summary = client.sync_state().await.unwrap();
-    println!("⛓  Latest block: {}", sync_summary.block_num);
+    println!("Latest block: {}", sync_summary.block_num);
 
     // -------------------------------------------------------------------------
-    // STEP 1 – Deploy the counter contract
+    // STEP 1: Create Basic User Account
+    // -------------------------------------------------------------------------
+    let (alice_account, _) = create_basic_account(&mut client, keystore.clone())
+        .await
+        .unwrap();
+    println!(
+        "alice account id: {:?}",
+        alice_account.id().to_bech32(NetworkId::Testnet)
+    );
+
+    // -------------------------------------------------------------------------
+    // STEP 2: Create Counter Smart Contract
     // -------------------------------------------------------------------------
     let counter_code = fs::read_to_string(Path::new("./masm/accounts/counter.masm")).unwrap();
 
-    let (counter_contract, counter_seed) =
-        create_public_immutable_contract(&mut client, &counter_code).await?;
+    let (counter_contract, counter_seed) = create_network_account(&mut client, &counter_code)
+        .await
+        .unwrap();
+    println!(
+        "contract id: {:?}",
+        counter_contract.id().to_bech32(NetworkId::Testnet)
+    );
 
     client
         .add_account(&counter_contract, Some(counter_seed), false)
         .await
         .unwrap();
 
-    println!(
-        "📄 Counter contract ID: {}",
-        counter_contract.id().to_bech32(NetworkId::Testnet)
-    );
+    // -------------------------------------------------------------------------
+    // STEP 3: Deploy Network Account
+    // -------------------------------------------------------------------------
 
-    // -------------------------------------------------------------------------
-    // STEP 2 – Compile the increment script
-    // -------------------------------------------------------------------------
     let script_code =
         fs::read_to_string(Path::new("./masm/scripts/increment_script.masm")).unwrap();
 
@@ -53,9 +66,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let tx_script = create_tx_script(script_code, Some(library)).unwrap();
 
-    // -------------------------------------------------------------------------
-    // STEP 3 – Build & send transaction
-    // -------------------------------------------------------------------------
     let tx_increment_request = TransactionRequestBuilder::new()
         .custom_script(tx_script)
         .build()
@@ -68,39 +78,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _ = client.submit_transaction(tx_result.clone()).await;
 
-    println!("🚀 Increment transaction submitted – waiting for finality …");
-    sleep(Duration::from_secs(7)).await;
+    let tx_id = tx_result.executed_transaction().id();
+    println!(
+        "View transaction on MidenScan: https://testnet.midenscan.com/tx/{:?}",
+        tx_id
+    );
 
     // -------------------------------------------------------------------------
-    // STEP 4 – Fetch contract state & verify
+    // STEP 4: Prepare & Create the Note
     // -------------------------------------------------------------------------
+    let note_code = fs::read_to_string(Path::new("./masm/notes/increment_note.masm")).unwrap();
+    let account_code = fs::read_to_string(Path::new("./masm/accounts/counter.masm")).unwrap();
 
-    // Deleting keystore & store to show how to fetch public state
+    let library_path = "external_contract::counter_contract";
+    let library = create_library(account_code, library_path).unwrap();
+
+    let increment_note = create_network_note(
+        &mut client,
+        note_code,
+        library,
+        alice_account,
+        counter_contract.id(),
+    )
+    .await
+    .unwrap();
+
+    println!("increment note created, waiting for onchain commitment");
+
+    // -------------------------------------------------------------------------
+    // STEP 5: Validate Updated State
+    // -------------------------------------------------------------------------
+    sleep(Duration::from_secs(5)).await;
+
     delete_keystore_and_store(None).await;
 
-    let endpoint = Endpoint::testnet();
-    let mut client = instantiate_client(endpoint, None).await?;
+    let mut client = instantiate_client(endpoint, None).await.unwrap();
 
     client
         .import_account_by_id(counter_contract.id())
         .await
         .unwrap();
 
-    let account_state = client
-        .get_account(counter_contract.id())
-        .await?
-        .expect("counter contract not found");
+    let new_account_state = client.get_account(counter_contract.id()).await.unwrap();
 
-    let word: Word = account_state.account().storage().get_item(0)?.into();
-    let counter_val = word.get(3).unwrap().as_int();
-    println!("🔢 Counter value after tx: {}", counter_val);
-    println!("✅ Success! The counter was incremented.");
-
-    let tx_id = tx_result.executed_transaction().id();
-    println!(
-        "View transaction on MidenScan: https://testnet.midenscan.com/tx/{:?}",
-        tx_id
-    );
+    if let Some(account) = new_account_state.as_ref() {
+        let count: Word = account.account().storage().get_item(0).unwrap().into();
+        let val = count.get(3).unwrap().as_int();
+        assert_eq!(val, 2);
+    }
 
     Ok(())
 }
