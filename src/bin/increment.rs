@@ -12,7 +12,7 @@ use tokio::time::{Duration, sleep};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    delete_keystore_and_store(None).await;
+    // delete_keystore_and_store(None).await;
 
     // -------------------------------------------------------------------------
     // Instantiate client
@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let library_path = "external_contract::counter_contract";
     let library = create_library(account_code, library_path).unwrap();
 
-    for i in 0..100 {
+    for i in 0..10 {
         println!("loop iteration: {i}");
         let _increment_note = create_network_note(
             &mut client,
