@@ -157,7 +157,7 @@ pub async fn create_basic_account(
     let key_pair = SecretKey::with_rng(client.rng());
     let builder = AccountBuilder::new(init_seed)
         .account_type(AccountType::RegularAccountUpdatableCode)
-        .storage_mode(AccountStorageMode::Network)
+        .storage_mode(AccountStorageMode::Public)
         .with_auth_component(incr_nonce_component)
         .with_component(BasicWallet);
     let (account, seed) = builder.build().unwrap();
