@@ -1,6 +1,6 @@
 use miden_client::{Word, account::AccountId, keystore::FilesystemKeyStore, rpc::Endpoint};
 use miden_objects::account::NetworkId;
-use std::{fs, path::Path};
+use std::{env, fs, path::Path};
 use template::common::{
     create_basic_account, create_library, create_network_note, delete_keystore_and_store,
     instantiate_client, wait_for_tx,
@@ -8,6 +8,9 @@ use template::common::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load environment variables from .env file
+    dotenv::dotenv().ok();
+
     delete_keystore_and_store(None).await;
 
     // -------------------------------------------------------------------------
@@ -32,10 +35,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // -------------------------------------------------------------------------
-    // STEP 2 – Query Counter State
+    // STEP 2 – Read Counter Contract ID from .env file
     // -------------------------------------------------------------------------
-    let (_network_id, counter_contract_id) =
-        AccountId::from_bech32("mtst1qr00n0fx70uaxsq4mxtf6csmduz0flwt").unwrap();
+    let counter_contract_id_hex = env::var("COUNTER_CONTRACT_ID")
+        .expect("COUNTER_CONTRACT_ID not found in .env file. Please run 'cargo run --release template' first.");
+
+    let counter_contract_id = AccountId::from_hex(&counter_contract_id_hex)
+        .expect("Invalid COUNTER_CONTRACT_ID format in .env file");
+
+    println!(
+        "Using counter contract ID: {}",
+        counter_contract_id.to_hex()
+    );
 
     client
         .import_account_by_id(counter_contract_id)
@@ -80,6 +91,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut client = instantiate_client(endpoint, None).await.unwrap();
 
+    // Sync to get the latest state after the transaction
+    client.sync_state().await.unwrap();
+
     client
         .import_account_by_id(counter_contract_id)
         .await
@@ -90,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(account) = new_account_state.as_ref() {
         let count: Word = account.account().storage().get_item(0).unwrap().into();
         let val = count.get(3).unwrap().as_int();
-        println!("Counter count: {val}");
+        println!("🔢 Counter value after tx: {val}");
     }
 
     Ok(())

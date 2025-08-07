@@ -2,14 +2,13 @@ use std::{fs, path::Path};
 
 use template::common::{
     create_basic_account, create_library, create_network_account, create_network_note,
-    create_tx_script, delete_keystore_and_store, instantiate_client, wait_for_note,
+    create_tx_script, delete_keystore_and_store, instantiate_client, wait_for_tx,
 };
 
 use miden_client::{
     Word, keystore::FilesystemKeyStore, rpc::Endpoint, transaction::TransactionRequestBuilder,
 };
 use miden_objects::account::NetworkId;
-use tokio::time::{Duration, sleep};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -47,6 +46,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         counter_contract.id().to_bech32(NetworkId::Testnet)
     );
 
+    // Save the counter contract ID to .env file
+    let env_content = format!("COUNTER_CONTRACT_ID={}", counter_contract.id().to_hex());
+    fs::write(".env", env_content).expect("Failed to write .env file");
+    println!("Counter contract ID saved to .env file");
+
     client
         .add_account(&counter_contract, Some(counter_seed), false)
         .await
@@ -83,6 +87,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tx_id
     );
 
+    // Wait for the transaction to be committed
+    wait_for_tx(&mut client, tx_id).await.unwrap();
+
     // -------------------------------------------------------------------------
     // STEP 4: Prepare & Create the Note
     // -------------------------------------------------------------------------
@@ -92,11 +99,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let library_path = "external_contract::counter_contract";
     let library = create_library(account_code, library_path).unwrap();
 
-    let _increment_note = create_network_note(
+    let (_increment_note, note_tx_id) = create_network_note(
         &mut client,
         note_code,
         library,
-        alice_account,
+        alice_account.clone(),
         counter_contract.id(),
     )
     .await
@@ -104,10 +111,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("increment note created, waiting for onchain commitment");
 
+    // Wait for the note transaction to be committed
+    wait_for_tx(&mut client, note_tx_id).await.unwrap();
+
     // -------------------------------------------------------------------------
     // STEP 5: Validate Updated State
     // -------------------------------------------------------------------------
-    sleep(Duration::from_secs(5)).await;
 
     delete_keystore_and_store(None).await;
 
