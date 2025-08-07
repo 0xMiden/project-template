@@ -1,11 +1,13 @@
 use template::common::{
     create_basic_account, create_library, create_network_account, create_network_note,
-    create_tx_script, delete_keystore_and_store, instantiate_client, wait_for_note,
+    create_tx_script, delete_keystore_and_store, instantiate_client, wait_for_note, wait_for_tx,
 };
 
 use miden_client::{
-    ClientError, Word, keystore::FilesystemKeyStore, rpc::Endpoint,
-    transaction::TransactionRequestBuilder,
+    ClientError, Word,
+    keystore::FilesystemKeyStore,
+    rpc::Endpoint,
+    transaction::{TransactionId, TransactionRequestBuilder},
 };
 use miden_objects::account::NetworkId;
 use std::{fs, path::Path};
@@ -73,8 +75,8 @@ async fn increment_counter_with_script() -> Result<(), ClientError> {
     // -------------------------------------------------------------------------
     // STEP 4: Validate Updated State
     // -------------------------------------------------------------------------
-    sleep(Duration::from_secs(7)).await;
-
+    // Wait for transaction to be committed
+    wait_for_tx(&mut client, tx_id).await?;
     delete_keystore_and_store(None).await;
 
     let mut client = instantiate_client(endpoint, None).await.unwrap();
@@ -183,7 +185,7 @@ async fn increment_counter_with_note() -> Result<(), ClientError> {
     let library_path = "external_contract::counter_contract";
     let library = create_library(account_code, library_path).unwrap();
 
-    let increment_note = create_network_note(
+    let (increment_note, note_tx_id) = create_network_note(
         &mut client,
         note_code,
         library,
@@ -196,9 +198,9 @@ async fn increment_counter_with_note() -> Result<(), ClientError> {
     println!("increment note created, waiting for onchain commitment");
 
     // -------------------------------------------------------------------------
-    // STEP 5: Wait for Network Note Creation
+    // STEP 5: Wait for Transaction Commitment
     // -------------------------------------------------------------------------
-    wait_for_note(&mut client, None, &increment_note).await?;
+    wait_for_tx(&mut client, note_tx_id).await?;
 
     // -------------------------------------------------------------------------
     // STEP 6: Validate Updated State

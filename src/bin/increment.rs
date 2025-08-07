@@ -1,18 +1,14 @@
-// src/main.rs  — cargo run
-use std::{fs, path::Path};
-
+use miden_client::{Word, account::AccountId, keystore::FilesystemKeyStore, rpc::Endpoint};
 use miden_objects::account::NetworkId;
+use std::{fs, path::Path};
 use template::common::{
     create_basic_account, create_library, create_network_note, delete_keystore_and_store,
-    instantiate_client,
+    instantiate_client, wait_for_tx,
 };
-
-use miden_client::{Word, account::AccountId, keystore::FilesystemKeyStore, rpc::Endpoint};
-use tokio::time::{Duration, sleep};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // delete_keystore_and_store(None).await;
+    delete_keystore_and_store(None).await;
 
     // -------------------------------------------------------------------------
     // Instantiate client
@@ -64,26 +60,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let library_path = "external_contract::counter_contract";
     let library = create_library(account_code, library_path).unwrap();
 
-    for i in 0..10 {
-        println!("loop iteration: {i}");
-        let _increment_note = create_network_note(
-            &mut client,
-            note_code.clone(),
-            library.clone(),
-            alice_account.clone(),
-            counter_contract_id,
-        )
-        .await
-        .unwrap();
-    }
+    let (_increment_note, tx_id) = create_network_note(
+        &mut client,
+        note_code.clone(),
+        library.clone(),
+        alice_account.clone(),
+        counter_contract_id,
+    )
+    .await
+    .unwrap();
 
-    println!("increment note created, waiting for onchain commitment");
+    println!("increment note tx submitted, waiting for onchain commitment");
+    wait_for_tx(&mut client, tx_id).await?;
 
     // -------------------------------------------------------------------------
-    // STEP 5: Validate Updated State
+    // STEP 4: Validate Updated State
     // -------------------------------------------------------------------------
-    sleep(Duration::from_secs(5)).await;
-
     delete_keystore_and_store(None).await;
 
     let mut client = instantiate_client(endpoint, None).await.unwrap();

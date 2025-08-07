@@ -10,8 +10,10 @@ use miden_client::{
         NoteRelevance, NoteScript, NoteTag, NoteType,
     },
     rpc::{Endpoint, TonicRpcClient},
-    store::{InputNoteRecord, NoteFilter},
-    transaction::{OutputNote, TransactionRequestBuilder, TransactionScript},
+    store::{InputNoteRecord, NoteFilter, TransactionFilter},
+    transaction::{
+        OutputNote, TransactionId, TransactionRequestBuilder, TransactionScript, TransactionStatus,
+    },
 };
 use miden_lib::account::wallets::BasicWallet;
 use miden_lib::transaction::TransactionKernel;
@@ -73,7 +75,7 @@ pub async fn create_network_note(
     account_library: Library,
     creator_account: Account,
     counter_contract_id: AccountId,
-) -> Result<Note, Error> {
+) -> Result<(Note, TransactionId), Error> {
     let assembler = TransactionKernel::assembler()
         .with_library(&account_library)
         .unwrap()
@@ -112,8 +114,9 @@ pub async fn create_network_note(
         "View transaction on MidenScan: https://testnet.midenscan.com/tx/{:?}",
         tx_id
     );
+
     client.sync_state().await.unwrap();
-    Ok(note)
+    Ok((note, tx_id))
 }
 
 /// Creates a basic wallet account with RpoFalcon512 authentication.
@@ -242,35 +245,48 @@ pub async fn create_network_account(
     Ok((counter_contract, counter_seed))
 }
 
-/// Waits for a specific note to become available in the client's state.
+/// Waits for a specific note to become available in the client's state and checks transaction commitment.
 ///
 /// This function continuously polls the client's state until the expected note
-/// is found either in the consumable notes or committed notes. It uses a 2-second
-/// polling interval to check for the note's availability.
+/// is found either in the consumable notes or committed notes. It also checks if the
+/// associated transaction has been committed. It uses a 2-second polling interval.
 ///
 /// # Arguments
 ///
 /// * `client` - A mutable reference to the Miden client
 /// * `account_id` - An optional account to filter consumable notes by
 /// * `expected` - A reference to the note we're waiting for
+/// * `tx_id` - The transaction ID to check for commitment status
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` when the note is found, or a `ClientError` if synchronization fails.
+/// Returns `Ok(())` when the note is found and transaction is committed, or a `ClientError` if synchronization fails.
 ///
 /// # Behavior
 ///
-/// The function will loop indefinitely until the note is found, printing status
-/// messages every 2 seconds. It checks both consumable and committed note collections.
+/// The function will loop indefinitely until the note is found and the transaction is committed,
+/// printing status messages every 2 seconds. It checks both consumable and committed note collections
+/// as well as transaction commitment status.
 pub async fn wait_for_note(
     client: &mut Client,
     account_id: Option<Account>,
     expected: &Note,
+    tx_id: TransactionId,
 ) -> Result<(), ClientError> {
     use tokio::time::{Duration, sleep};
 
     loop {
         client.sync_state().await?;
+
+        // Check transaction status
+        let txs = client
+            .get_transactions(TransactionFilter::Ids(vec![tx_id]))
+            .await?;
+        let tx_committed = if !txs.is_empty() {
+            matches!(txs[0].status, TransactionStatus::Committed(_))
+        } else {
+            false
+        };
 
         // Notes that can be consumed right now
         let consumable: Vec<(InputNoteRecord, Vec<(AccountId, NoteRelevance)>)> = client
@@ -281,15 +297,76 @@ pub async fn wait_for_note(
         let committed: Vec<InputNoteRecord> = client.get_input_notes(NoteFilter::Committed).await?;
 
         // Check both vectors
-        let found = consumable.iter().any(|(rec, _)| rec.id() == expected.id())
+        let note_found = consumable.iter().any(|(rec, _)| rec.id() == expected.id())
             || committed.iter().any(|rec| rec.id() == expected.id());
 
-        if found {
-            println!("✅ note found {}", expected.id().to_hex());
+        if note_found && tx_committed {
+            println!(
+                "✅ note found {} and transaction committed",
+                expected.id().to_hex()
+            );
             break;
         }
 
-        println!("Note {} not found. Waiting...", expected.id().to_hex());
+        if note_found && !tx_committed {
+            println!(
+                "Note {} found but transaction not yet committed. Waiting...",
+                expected.id().to_hex()
+            );
+        } else if !note_found {
+            println!("Note {} not found. Waiting...", expected.id().to_hex());
+        }
+
+        sleep(Duration::from_secs(2)).await;
+    }
+
+    Ok(())
+}
+
+/// Waits for a specific transaction to be committed.
+///
+/// This function continuously polls the client's state until the specified transaction
+/// has been committed. It uses a 2-second polling interval to check for the transaction's
+/// commitment status.
+///
+/// # Arguments
+///
+/// * `client` - A mutable reference to the Miden client
+/// * `tx_id` - The transaction ID to check for commitment status
+///
+/// # Returns
+///
+/// Returns `Ok(())` when the transaction is committed, or a `ClientError` if synchronization fails.
+///
+/// # Behavior
+///
+/// The function will loop indefinitely until the transaction is committed,
+/// printing status messages every 2 seconds.
+pub async fn wait_for_tx(client: &mut Client, tx_id: TransactionId) -> Result<(), ClientError> {
+    use tokio::time::{Duration, sleep};
+
+    loop {
+        client.sync_state().await?;
+
+        // Check transaction status
+        let txs = client
+            .get_transactions(TransactionFilter::Ids(vec![tx_id]))
+            .await?;
+        let tx_committed = if !txs.is_empty() {
+            matches!(txs[0].status, TransactionStatus::Committed(_))
+        } else {
+            false
+        };
+
+        if tx_committed {
+            println!("✅ transaction {} committed", tx_id.to_hex());
+            break;
+        }
+
+        println!(
+            "Transaction {} not yet committed. Waiting...",
+            tx_id.to_hex()
+        );
         sleep(Duration::from_secs(2)).await;
     }
 
