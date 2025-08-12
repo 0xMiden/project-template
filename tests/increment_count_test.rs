@@ -105,7 +105,7 @@ async fn increment_counter_with_script() -> Result<(), ClientError> {
         .unwrap()
         .into();
     let val = count.get(3).unwrap().as_int();
-    assert_eq!(val, 2);
+    assert_eq!(val, 1);
 
     Ok(())
 }
