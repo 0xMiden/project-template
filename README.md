@@ -32,5 +32,3 @@ cargo test --release --package template --test increment_count_test -- increment
 2) Run the node locally: 
 ```bash
 ./scripts/start_node.sh
-```
-
