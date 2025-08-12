@@ -7,16 +7,17 @@ use miden_client::{
     keystore::FilesystemKeyStore,
     note::{
         Note, NoteAssets, NoteExecutionHint, NoteInputs, NoteMetadata, NoteRecipient,
-        NoteRelevance, NoteScript, NoteTag, NoteType,
+        NoteRelevance, NoteTag, NoteType,
     },
     rpc::{Endpoint, TonicRpcClient},
     store::{InputNoteRecord, NoteFilter, TransactionFilter},
-    transaction::{
-        OutputNote, TransactionId, TransactionRequestBuilder, TransactionScript, TransactionStatus,
-    },
+    transaction::{OutputNote, TransactionId, TransactionRequestBuilder, TransactionStatus},
 };
-use miden_lib::account::wallets::BasicWallet;
 use miden_lib::transaction::TransactionKernel;
+use miden_lib::{
+    account::{auth, wallets::BasicWallet},
+    utils::ScriptBuilder,
+};
 use miden_objects::{
     account::AccountComponent,
     assembly::{Assembler, DefaultSourceManager, Library, LibraryPath, Module, ModuleKind},
@@ -24,7 +25,7 @@ use miden_objects::{
 use rand::{RngCore, rngs::StdRng};
 use serde::de::value::Error;
 use std::{fs, path::Path, sync::Arc};
-
+use tokio::time::{Duration, sleep};
 /// Helper to instantiate a `Client` for interacting with Miden.
 ///
 /// # Arguments
@@ -76,13 +77,14 @@ pub async fn create_network_note(
     creator_account: Account,
     counter_contract_id: AccountId,
 ) -> Result<(Note, TransactionId), Error> {
-    let assembler = TransactionKernel::assembler()
-        .with_library(&account_library)
-        .unwrap()
-        .with_debug_mode(true);
     let rng = client.rng();
     let serial_num = rng.inner_mut().draw_word();
-    let note_script = NoteScript::compile(note_code, assembler.clone()).unwrap();
+
+    let note_script = ScriptBuilder::default()
+        .with_dynamically_linked_library(&account_library)
+        .unwrap()
+        .compile_note_script(note_code)
+        .unwrap();
     let note_inputs = NoteInputs::new([].to_vec()).unwrap();
     let recipient = NoteRecipient::new(serial_num, note_script, note_inputs.clone());
 
@@ -172,31 +174,6 @@ pub async fn create_basic_account(
     Ok((account, key_pair))
 }
 
-/// Creates an account component with no authentication requirements.
-///
-/// This function reads the no-auth MASM code from the filesystem and compiles it
-/// into an account component that supports all transaction types without requiring
-/// authentication signatures.
-///
-/// # Returns
-///
-/// Returns a `Result` containing the compiled `AccountComponent` if successful,
-/// or an `Error` if compilation fails.
-///
-/// # Note
-///
-/// This component should only be used for testing or specific use cases where
-/// authentication is not required, as it provides no security.
-pub async fn create_no_auth_component() -> Result<AccountComponent, Error> {
-    let assembler: Assembler = TransactionKernel::assembler().with_debug_mode(true);
-    let no_auth_code = fs::read_to_string(Path::new("./masm/auth/no_auth.masm")).unwrap();
-    let no_auth_component = AccountComponent::compile(no_auth_code, assembler.clone(), vec![])
-        .unwrap()
-        .with_supports_all_types();
-
-    Ok(no_auth_component)
-}
-
 /// Creates a public immutable network smart contract account from the provided MASM code.
 ///
 /// This function compiles the provided account code into a contract with immutable code,
@@ -233,11 +210,11 @@ pub async fn create_network_account(
 
     let mut init_seed = [0_u8; 32];
     client.rng().fill_bytes(&mut init_seed);
-    let no_auth_component = create_no_auth_component().await.unwrap();
+
     let (counter_contract, counter_seed) = AccountBuilder::new(init_seed)
         .account_type(AccountType::RegularAccountImmutableCode)
         .storage_mode(AccountStorageMode::Network)
-        .with_auth_component(no_auth_component)
+        .with_auth_component(auth::NoAuth)
         .with_component(counter_component.clone())
         .build()
         .unwrap();
@@ -273,8 +250,6 @@ pub async fn wait_for_note(
     expected: &Note,
     tx_id: TransactionId,
 ) -> Result<(), ClientError> {
-    use tokio::time::{Duration, sleep};
-
     loop {
         client.sync_state().await?;
 
@@ -343,8 +318,6 @@ pub async fn wait_for_note(
 /// The function will loop indefinitely until the transaction is committed,
 /// printing status messages every 2 seconds.
 pub async fn wait_for_tx(client: &mut Client, tx_id: TransactionId) -> Result<(), ClientError> {
-    use tokio::time::{Duration, sleep};
-
     loop {
         client.sync_state().await?;
 
@@ -396,31 +369,6 @@ pub fn create_library(
     )?;
     let library = assembler.clone().assemble_library([module])?;
     Ok(library)
-}
-
-/// Creates a transaction script based on the provided code and optional library.
-///
-/// # Arguments
-///
-/// * `script_code` - The code for the transaction script, typically written in MASM.
-/// * `library` - An optional library to use with the script.
-///
-/// # Returns
-///
-/// Returns a `TransactionScript` if successfully created, or an error.
-pub fn create_tx_script(
-    script_code: String,
-    library: Option<Library>,
-) -> Result<TransactionScript, Box<dyn std::error::Error>> {
-    let assembler = TransactionKernel::assembler();
-
-    let assembler = match library {
-        Some(lib) => assembler.with_library(lib)?,
-        None => assembler.with_debug_mode(true),
-    };
-
-    let tx_script = TransactionScript::compile(script_code, assembler)?;
-    Ok(tx_script)
 }
 
 /// Deletes the keystore and store files.

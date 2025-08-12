@@ -1,6 +1,7 @@
+use miden_lib::utils::ScriptBuilder;
 use template::common::{
     create_basic_account, create_library, create_network_account, create_network_note,
-    create_tx_script, delete_keystore_and_store, instantiate_client, wait_for_tx,
+    delete_keystore_and_store, instantiate_client, wait_for_tx,
 };
 
 use miden_client::{
@@ -46,7 +47,11 @@ async fn increment_counter_with_script() -> Result<(), ClientError> {
 
     let library = create_library(account_code, library_path).unwrap();
 
-    let tx_script = create_tx_script(script_code, Some(library)).unwrap();
+    let tx_script = ScriptBuilder::default()
+        .with_dynamically_linked_library(&library)
+        .unwrap()
+        .compile_tx_script(script_code)
+        .unwrap();
 
     // -------------------------------------------------------------------------
     // STEP 3: Build & Submit Transaction
@@ -153,7 +158,11 @@ async fn increment_counter_with_note() -> Result<(), ClientError> {
 
     let library = create_library(account_code, library_path).unwrap();
 
-    let tx_script = create_tx_script(script_code, Some(library)).unwrap();
+    let tx_script = ScriptBuilder::default()
+        .with_dynamically_linked_library(&library)
+        .unwrap()
+        .compile_tx_script(script_code)
+        .unwrap();
 
     let tx_increment_request = TransactionRequestBuilder::new()
         .custom_script(tx_script)

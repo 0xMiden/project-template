@@ -2,13 +2,15 @@ use std::{fs, path::Path};
 
 use template::common::{
     create_basic_account, create_library, create_network_account, create_network_note,
-    create_tx_script, delete_keystore_and_store, instantiate_client, wait_for_tx,
+    delete_keystore_and_store, instantiate_client, wait_for_tx,
 };
 
 use miden_client::{
     Word, keystore::FilesystemKeyStore, rpc::Endpoint, transaction::TransactionRequestBuilder,
 };
+use miden_lib::utils::ScriptBuilder;
 use miden_objects::account::NetworkId;
+use tokio::time::{Duration, sleep};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -70,7 +72,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let library = create_library(account_code, library_path).unwrap();
 
-    let tx_script = create_tx_script(script_code, Some(library)).unwrap();
+    let tx_script = ScriptBuilder::default()
+        .with_dynamically_linked_library(&library)
+        .unwrap()
+        .compile_tx_script(script_code)
+        .unwrap();
 
     let tx_increment_request = TransactionRequestBuilder::new()
         .custom_script(tx_script)
@@ -93,32 +99,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Wait for the transaction to be committed
     wait_for_tx(&mut client, tx_id).await.unwrap();
 
-    // -------------------------------------------------------------------------
-    // STEP 4: Prepare & Create the Note
-    // -------------------------------------------------------------------------
-    let note_code = fs::read_to_string(Path::new("./masm/notes/increment_note.masm")).unwrap();
-    let account_code = fs::read_to_string(Path::new("./masm/accounts/counter.masm")).unwrap();
-
-    let library_path = "external_contract::counter_contract";
-    let library = create_library(account_code, library_path).unwrap();
-
-    let (_increment_note, note_tx_id) = create_network_note(
-        &mut client,
-        note_code,
-        library,
-        alice_account.clone(),
-        counter_contract.id(),
-    )
-    .await
-    .unwrap();
-
-    println!("increment note created, waiting for onchain commitment");
-
-    // Wait for the note transaction to be committed
-    wait_for_tx(&mut client, note_tx_id).await.unwrap();
+    // Wait for network note to be consumed
+    sleep(Duration::from_secs(5)).await;
 
     // -------------------------------------------------------------------------
-    // STEP 5: Validate Updated State
+    // STEP 4: Validate Updated State
     // -------------------------------------------------------------------------
 
     delete_keystore_and_store(None).await;
@@ -135,7 +120,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(account) = new_account_state.as_ref() {
         let count: Word = account.account().storage().get_item(0).unwrap().into();
         let val = count.get(3).unwrap().as_int();
-        assert_eq!(val, 2);
+        assert_eq!(val, 1);
+        println!("counter contract count state: {:?}", val);
     }
 
     Ok(())
