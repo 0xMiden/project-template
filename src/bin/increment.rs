@@ -37,8 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     // STEP 2 – Read Counter Contract ID from .env file
     // -------------------------------------------------------------------------
-    let counter_contract_id_bech32 = env::var("COUNTER_CONTRACT_ID")
-        .expect("COUNTER_CONTRACT_ID not found in .env file. Please run 'cargo run --bin deploy' first.");
+    let counter_contract_id_bech32 = env::var("COUNTER_CONTRACT_ID").expect(
+        "COUNTER_CONTRACT_ID not found in .env file. Please run 'cargo run --bin deploy' first.",
+    );
 
     let (_, counter_contract_id) = AccountId::from_bech32(&counter_contract_id_bech32)
         .expect("Invalid COUNTER_CONTRACT_ID format in .env file");

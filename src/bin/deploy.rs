@@ -47,7 +47,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Save the counter contract ID to .env file
-    let env_content = format!("COUNTER_CONTRACT_ID={}", counter_contract.id().to_bech32(NetworkId::Testnet));
+    let env_content = format!(
+        "COUNTER_CONTRACT_ID={}",
+        counter_contract.id().to_bech32(NetworkId::Testnet)
+    );
     fs::write(".env", env_content).expect("Failed to write .env file");
     println!("Counter contract ID saved to .env file");
 
