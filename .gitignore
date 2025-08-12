@@ -25,3 +25,5 @@ node_modules/
 
 keystore/
 .sqlite3
+store.sqlite3
+.env

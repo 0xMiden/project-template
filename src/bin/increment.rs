@@ -37,15 +37,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     // STEP 2 – Read Counter Contract ID from .env file
     // -------------------------------------------------------------------------
-    let counter_contract_id_hex = env::var("COUNTER_CONTRACT_ID")
-        .expect("COUNTER_CONTRACT_ID not found in .env file. Please run 'cargo run --release template' first.");
+    let counter_contract_id_bech32 = env::var("COUNTER_CONTRACT_ID")
+        .expect("COUNTER_CONTRACT_ID not found in .env file. Please run 'cargo run --bin deploy' first.");
 
-    let counter_contract_id = AccountId::from_hex(&counter_contract_id_hex)
+    let (_, counter_contract_id) = AccountId::from_bech32(&counter_contract_id_bech32)
         .expect("Invalid COUNTER_CONTRACT_ID format in .env file");
 
     println!(
         "Using counter contract ID: {}",
-        counter_contract_id.to_hex()
+        counter_contract_id.to_bech32(NetworkId::Testnet)
     );
 
     client
