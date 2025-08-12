@@ -20,8 +20,14 @@ cargo test --release -- --nocapture --test-threads=1
 
 ### Running the network transaction test against testnet:
 ```bash
-cargo test --release --package template --test increment_count_test -- increment_counter_with_note --exact --show-output 
+cargo test --release --package template --test increment_count_test -- increment_counter_with_network_note --exact --show-output 
 ```
+
+### Running the private note transaction test against testnet:
+```bash
+cargo test --release --package template --test increment_count_test -- increment_counter_with_private_note --exact --show-output 
+```
+
 
 ### Run the miden-node locally:
 1) Install & setup miden-node:

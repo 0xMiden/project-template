@@ -13,7 +13,7 @@ use miden_client::{
     store::{InputNoteRecord, NoteFilter, TransactionFilter},
     transaction::{OutputNote, TransactionId, TransactionRequestBuilder, TransactionStatus},
 };
-use miden_lib::transaction::TransactionKernel;
+use miden_lib::{account::auth::RpoFalcon512, transaction::TransactionKernel};
 use miden_lib::{
     account::{auth, wallets::BasicWallet},
     utils::ScriptBuilder,
@@ -24,8 +24,9 @@ use miden_objects::{
 };
 use rand::{RngCore, rngs::StdRng};
 use serde::de::value::Error;
-use std::{fs, path::Path, sync::Arc};
+use std::sync::Arc;
 use tokio::time::{Duration, sleep};
+
 /// Helper to instantiate a `Client` for interacting with Miden.
 ///
 /// # Arguments
@@ -121,6 +122,73 @@ pub async fn create_network_note(
     Ok((note, tx_id))
 }
 
+/// Creates a private note with the specified parameters and submits it to the network.
+///
+/// This function compiles the note script, creates a note with private visibility,
+/// and submits a transaction containing the note to the Miden network.
+///
+/// # Arguments
+///
+/// * `client` - A mutable reference to the Miden client for network operations
+/// * `note_code` - The MASM code that defines the note's behavior
+/// * `account_library` - The library containing account-related code dependencies
+/// * `creator_account` - The account that will create and own this note
+/// * `assets` - The assets to be included in the note
+///
+/// # Returns
+///
+/// Returns a `Result` containing the created `Note` if successful, or an `Error` if creation fails.
+pub async fn create_private_note(
+    client: &mut Client,
+    note_code: String,
+    account_library: Library,
+    creator_account: Account,
+    assets: NoteAssets,
+) -> Result<Note, Error> {
+    let rng = client.rng();
+    let serial_num = rng.inner_mut().draw_word();
+
+    let note_script = ScriptBuilder::default()
+        .with_dynamically_linked_library(&account_library)
+        .unwrap()
+        .compile_note_script(note_code)
+        .unwrap();
+    let note_inputs = NoteInputs::new([].to_vec()).unwrap();
+    let recipient = NoteRecipient::new(serial_num, note_script, note_inputs.clone());
+
+    let tag = NoteTag::from_account_id(creator_account.id());
+    let metadata = NoteMetadata::new(
+        creator_account.id(),
+        NoteType::Private,
+        tag,
+        NoteExecutionHint::none(),
+        Felt::new(0),
+    )
+    .unwrap();
+
+    let note = Note::new(assets, metadata, recipient);
+
+    let note_req = TransactionRequestBuilder::new()
+        .own_output_notes(vec![OutputNote::Full(note.clone())])
+        .build()
+        .unwrap();
+    let tx_result = client
+        .new_transaction(creator_account.id(), note_req)
+        .await
+        .unwrap();
+
+    let _ = client.submit_transaction(tx_result.clone()).await;
+
+    let tx_id = tx_result.executed_transaction().id();
+    println!(
+        "View transaction on MidenScan: https://testnet.midenscan.com/tx/{:?}",
+        tx_id
+    );
+
+    client.sync_state().await.unwrap();
+    Ok(note)
+}
+
 /// Creates a basic wallet account with RpoFalcon512 authentication.
 ///
 /// This function generates a new account with updatable code, public storage mode,
@@ -143,27 +211,11 @@ pub async fn create_basic_account(
     let mut init_seed = [0_u8; 32];
     client.rng().fill_bytes(&mut init_seed);
 
-    let assembler = TransactionKernel::assembler().with_debug_mode(true);
-    let incr_nonce_code = fs::read_to_string(Path::new("./masm/auth/no_auth.masm")).unwrap();
-
-    let incr_nonce_component = AccountComponent::compile(
-        incr_nonce_code.to_string(),
-        assembler.clone(),
-        vec![StorageSlot::Value([
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-        ])],
-    )
-    .unwrap()
-    .with_supports_all_types();
-
     let key_pair = SecretKey::with_rng(client.rng());
     let builder = AccountBuilder::new(init_seed)
         .account_type(AccountType::RegularAccountUpdatableCode)
         .storage_mode(AccountStorageMode::Public)
-        .with_auth_component(incr_nonce_component)
+        .with_auth_component(RpoFalcon512::new(key_pair.public_key()))
         .with_component(BasicWallet);
     let (account, seed) = builder.build().unwrap();
     client.add_account(&account, Some(seed), false).await?;
@@ -214,6 +266,39 @@ pub async fn create_network_account(
     let (counter_contract, counter_seed) = AccountBuilder::new(init_seed)
         .account_type(AccountType::RegularAccountImmutableCode)
         .storage_mode(AccountStorageMode::Network)
+        .with_auth_component(auth::NoAuth)
+        .with_component(counter_component.clone())
+        .build()
+        .unwrap();
+
+    Ok((counter_contract, counter_seed))
+}
+
+pub async fn create_public_account(
+    client: &mut Client,
+    account_code: &str,
+) -> Result<(Account, Word), ClientError> {
+    let assembler: Assembler = TransactionKernel::assembler().with_debug_mode(true);
+
+    let counter_component = AccountComponent::compile(
+        account_code.to_string(),
+        assembler.clone(),
+        vec![StorageSlot::Value([
+            Felt::new(0),
+            Felt::new(0),
+            Felt::new(0),
+            Felt::new(0),
+        ])],
+    )
+    .unwrap()
+    .with_supports_all_types();
+
+    let mut init_seed = [0_u8; 32];
+    client.rng().fill_bytes(&mut init_seed);
+
+    let (counter_contract, counter_seed) = AccountBuilder::new(init_seed)
+        .account_type(AccountType::RegularAccountImmutableCode)
+        .storage_mode(AccountStorageMode::Public)
         .with_auth_component(auth::NoAuth)
         .with_component(counter_component.clone())
         .build()

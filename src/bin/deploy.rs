@@ -1,8 +1,8 @@
 use std::{fs, path::Path};
 
 use template::common::{
-    create_basic_account, create_library, create_network_account, create_network_note,
-    delete_keystore_and_store, instantiate_client, wait_for_tx,
+    create_basic_account, create_library, create_network_account, delete_keystore_and_store,
+    instantiate_client, wait_for_tx,
 };
 
 use miden_client::{
