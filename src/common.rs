@@ -27,6 +27,47 @@ use serde::de::value::Error;
 use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
+/// Counter component for creating counter accounts.
+///
+/// This component supports all account types and provides a simple counter
+/// functionality with a single storage slot initialized to zero.
+pub struct Counter {
+    initial_value: u64,
+}
+
+impl Counter {
+    /// Creates a new [`Counter`] component with the specified initial value.
+    pub fn new(initial_value: u64) -> Self {
+        Self { initial_value }
+    }
+
+    /// Creates a new [`Counter`] component with initial value of 0.
+    pub fn default() -> Self {
+        Self::new(0)
+    }
+}
+
+impl From<Counter> for AccountComponent {
+    fn from(counter: Counter) -> Self {
+        let storage_slots = vec![StorageSlot::Value([
+            Felt::new(counter.initial_value),
+            Felt::new(0),
+            Felt::new(0),
+            Felt::new(0),
+        ])];
+
+        // We need to compile the counter account code
+        let account_code = include_str!("../masm/accounts/counter.masm");
+        let assembler: Assembler = TransactionKernel::assembler().with_debug_mode(true);
+
+        AccountComponent::compile(account_code.to_string(), assembler, storage_slots)
+            .expect(
+                "Counter component should satisfy the requirements of a valid account component",
+            )
+            .with_supports_all_types()
+    }
+}
+
 /// Helper to instantiate a `Client` for interacting with Miden.
 ///
 /// # Arguments
@@ -243,22 +284,9 @@ pub async fn create_basic_account(
 /// or a `ClientError` if contract creation fails.
 pub async fn create_network_account(
     client: &mut Client,
-    account_code: &str,
+    _account_code: &str,
 ) -> Result<(Account, Word), ClientError> {
-    let assembler: Assembler = TransactionKernel::assembler().with_debug_mode(true);
-
-    let counter_component = AccountComponent::compile(
-        account_code.to_string(),
-        assembler.clone(),
-        vec![StorageSlot::Value([
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-        ])],
-    )
-    .unwrap()
-    .with_supports_all_types();
+    let counter_component = Counter::default();
 
     let mut init_seed = [0_u8; 32];
     client.rng().fill_bytes(&mut init_seed);
@@ -267,7 +295,7 @@ pub async fn create_network_account(
         .account_type(AccountType::RegularAccountImmutableCode)
         .storage_mode(AccountStorageMode::Network)
         .with_auth_component(auth::NoAuth)
-        .with_component(counter_component.clone())
+        .with_component(counter_component)
         .build()
         .unwrap();
 
@@ -276,22 +304,9 @@ pub async fn create_network_account(
 
 pub async fn create_public_account(
     client: &mut Client,
-    account_code: &str,
+    _account_code: &str,
 ) -> Result<(Account, Word), ClientError> {
-    let assembler: Assembler = TransactionKernel::assembler().with_debug_mode(true);
-
-    let counter_component = AccountComponent::compile(
-        account_code.to_string(),
-        assembler.clone(),
-        vec![StorageSlot::Value([
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-        ])],
-    )
-    .unwrap()
-    .with_supports_all_types();
+    let counter_component = Counter::default();
 
     let mut init_seed = [0_u8; 32];
     client.rng().fill_bytes(&mut init_seed);
@@ -300,7 +315,7 @@ pub async fn create_public_account(
         .account_type(AccountType::RegularAccountImmutableCode)
         .storage_mode(AccountStorageMode::Public)
         .with_auth_component(auth::NoAuth)
-        .with_component(counter_component.clone())
+        .with_component(counter_component)
         .build()
         .unwrap();
 

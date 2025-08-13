@@ -3,9 +3,9 @@
 A minimal example for compiling, deploying, and testing MASM contracts & notes.
 
 ### Running the program on testnet:
-Deploying the counter and incrementing:
+Deploying the counter:
 ```bash
-cargo run --release --bin template
+cargo run --release --bin deploy
 ```
 
 Incrementing an existing counter contract:

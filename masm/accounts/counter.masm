@@ -1,23 +1,23 @@
 use.miden::account
 use.std::sys
 
-# => []
+const.COUNTER_SLOT=0
 
+# Inputs: []
 export.get_count
-    push.0
+    push.COUNTER_SLOT
     # => [index]
 
     exec.account::get_item
     # => [count]
 
     exec.sys::truncate_stack
-    # => [count]
+    # => []
 end
 
-# => []
-
-export.increment
-    push.0
+# Inputs: []
+export.increment_count
+    push.COUNTER_SLOT
     # => [index]
 
     exec.account::get_item
@@ -27,9 +27,9 @@ export.increment
     # => [count+1]
 
     # debug statement with client
-    push.111 debug.stack drop
+    debug.stack
 
-    push.0
+    push.COUNTER_SLOT
     # [index, count+1]
 
     exec.account::set_item
