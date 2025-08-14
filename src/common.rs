@@ -282,10 +282,7 @@ pub async fn create_basic_account(
 ///
 /// Returns a `Result` containing a tuple of the created contract `Account` and its seed `Word`,
 /// or a `ClientError` if contract creation fails.
-pub async fn create_network_account(
-    client: &mut Client,
-    _account_code: &str,
-) -> Result<(Account, Word), ClientError> {
+pub async fn create_network_account(client: &mut Client) -> Result<(Account, Word), ClientError> {
     let counter_component = Counter::default();
 
     let mut init_seed = [0_u8; 32];
@@ -302,10 +299,7 @@ pub async fn create_network_account(
     Ok((counter_contract, counter_seed))
 }
 
-pub async fn create_public_account(
-    client: &mut Client,
-    _account_code: &str,
-) -> Result<(Account, Word), ClientError> {
+pub async fn create_public_account(client: &mut Client) -> Result<(Account, Word), ClientError> {
     let counter_component = Counter::default();
 
     let mut init_seed = [0_u8; 32];

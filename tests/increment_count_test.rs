@@ -26,11 +26,7 @@ async fn increment_counter_with_script() -> Result<(), ClientError> {
     // -------------------------------------------------------------------------
     // STEP 1: Create counter smart contract
     // -------------------------------------------------------------------------
-    let counter_code = fs::read_to_string(Path::new("./masm/accounts/counter.masm")).unwrap();
-
-    let (counter_contract, counter_seed) = create_network_account(&mut client, &counter_code)
-        .await
-        .unwrap();
+    let (counter_contract, counter_seed) = create_network_account(&mut client).await.unwrap();
     println!("contract id: {:?}", counter_contract.id().to_hex());
 
     client
@@ -136,11 +132,7 @@ async fn increment_counter_with_network_note() -> Result<(), ClientError> {
     // -------------------------------------------------------------------------
     // STEP 2: Create Counter Smart Contract
     // -------------------------------------------------------------------------
-    let counter_code = fs::read_to_string(Path::new("./masm/accounts/counter.masm")).unwrap();
-
-    let (counter_contract, counter_seed) = create_network_account(&mut client, &counter_code)
-        .await
-        .unwrap();
+    let (counter_contract, counter_seed) = create_network_account(&mut client).await.unwrap();
     println!(
         "contract id: {:?}",
         counter_contract.id().to_bech32(NetworkId::Testnet)
@@ -267,11 +259,7 @@ async fn increment_counter_with_private_note() -> Result<(), ClientError> {
     // -------------------------------------------------------------------------
     // STEP 2: Create Counter Smart Contract
     // -------------------------------------------------------------------------
-    let counter_code = fs::read_to_string(Path::new("./masm/accounts/counter.masm")).unwrap();
-
-    let (counter_contract, counter_seed) = create_public_account(&mut client, &counter_code)
-        .await
-        .unwrap();
+    let (counter_contract, counter_seed) = create_public_account(&mut client).await.unwrap();
     println!(
         "contract id: {:?}",
         counter_contract.id().to_bech32(NetworkId::Testnet)

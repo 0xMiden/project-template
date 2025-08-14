@@ -4,6 +4,18 @@ use.std::sys
 const.COUNTER_SLOT=0
 
 # Inputs: []
+export.constructor
+    exec.account::get_nonce
+
+    # fails if nonce != 0
+    eq.0 assert
+    # => []
+
+    exec.increment_count
+    # => []
+end
+
+# Inputs: []
 export.get_count
     push.COUNTER_SLOT
     # => [index]
