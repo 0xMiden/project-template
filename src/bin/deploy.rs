@@ -75,19 +75,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_tx_script(script_code)
         .unwrap();
 
-    let tx_increment_request = TransactionRequestBuilder::new()
+    // calling the `constructor` procedure to deploy the network counter contract
+    let deploy_tx_request = TransactionRequestBuilder::new()
         .custom_script(tx_script)
         .build()
         .unwrap();
 
-    let tx_result = client
-        .new_transaction(counter_contract.id(), tx_increment_request)
+    let deploy_tx_result = client
+        .new_transaction(counter_contract.id(), deploy_tx_request)
         .await
         .unwrap();
 
-    let _ = client.submit_transaction(tx_result.clone()).await;
+    let _ = client.submit_transaction(deploy_tx_result.clone()).await;
 
-    let tx_id = tx_result.executed_transaction().id();
+    let tx_id = deploy_tx_result.executed_transaction().id();
     println!(
         "View transaction on MidenScan: https://testnet.midenscan.com/tx/{:?}",
         tx_id
