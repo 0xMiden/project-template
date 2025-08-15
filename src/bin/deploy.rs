@@ -69,13 +69,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let library = create_library(account_code, library_path).unwrap();
 
+    // Creating a tx script which calls the `constructor` procedure
+    // which effectively deploys the network counter contract onchain.
     let tx_script = ScriptBuilder::default()
         .with_dynamically_linked_library(&library)
         .unwrap()
         .compile_tx_script(script_code)
         .unwrap();
 
-    // calling the `constructor` procedure to deploy the network counter contract
     let deploy_tx_request = TransactionRequestBuilder::new()
         .custom_script(tx_script)
         .build()
