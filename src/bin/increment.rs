@@ -1,9 +1,15 @@
-use miden_client::{Word, account::AccountId, keystore::FilesystemKeyStore, rpc::Endpoint};
+use miden_client::{
+    Word,
+    account::AccountId,
+    builder::ClientBuilder,
+    keystore::FilesystemKeyStore,
+    rpc::{Endpoint, TonicRpcClient},
+};
 use miden_objects::account::NetworkId;
-use std::{env, fs, path::Path};
+use std::{env, fs, path::Path, sync::Arc};
 use template::common::{
     create_basic_account, create_library, create_network_note, delete_keystore_and_store,
-    instantiate_client, wait_for_tx,
+    wait_for_tx,
 };
 
 #[tokio::main]
@@ -13,11 +19,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     delete_keystore_and_store(None).await;
 
-    // -------------------------------------------------------------------------
-    // Instantiate client
-    // -------------------------------------------------------------------------
     let endpoint = Endpoint::testnet();
-    let mut client = instantiate_client(endpoint.clone(), None).await.unwrap();
+    let timeout_ms = 10_000;
+    let rpc_api = Arc::new(TonicRpcClient::new(&endpoint, timeout_ms));
+
+    let mut client = ClientBuilder::new()
+        .rpc(rpc_api)
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
+
     let keystore = FilesystemKeyStore::new("./keystore".into()).unwrap();
 
     let sync_summary = client.sync_state().await.unwrap();
@@ -26,9 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     // STEP 1: Create Basic User Account
     // -------------------------------------------------------------------------
-    let (alice_account, _) = create_basic_account(&mut client, keystore.clone())
-        .await
-        .unwrap();
+    let (alice_account, _) = create_basic_account(&mut client, keystore).await.unwrap();
     println!(
         "alice account id: {:?}",
         alice_account.id().to_bech32(NetworkId::Testnet)
@@ -90,7 +100,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     delete_keystore_and_store(None).await;
 
-    let mut client = instantiate_client(endpoint, None).await.unwrap();
+    let mut client = ClientBuilder::new()
+        .rpc(Arc::new(TonicRpcClient::new(&endpoint, timeout_ms)))
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     // Sync to get the latest state after the transaction
     client.sync_state().await.unwrap();

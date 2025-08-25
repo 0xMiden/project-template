@@ -2,14 +2,19 @@ use std::{fs, path::Path};
 
 use template::common::{
     create_basic_account, create_library, create_network_account, delete_keystore_and_store,
-    instantiate_client, wait_for_tx,
+    wait_for_tx,
 };
 
 use miden_client::{
-    Word, keystore::FilesystemKeyStore, rpc::Endpoint, transaction::TransactionRequestBuilder,
+    Word,
+    builder::ClientBuilder,
+    keystore::FilesystemKeyStore,
+    rpc::{Endpoint, TonicRpcClient},
+    transaction::TransactionRequestBuilder,
 };
 use miden_lib::utils::ScriptBuilder;
 use miden_objects::account::NetworkId;
+use std::sync::Arc;
 use tokio::time::{Duration, sleep};
 
 #[tokio::main]
@@ -17,7 +22,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     delete_keystore_and_store(None).await;
 
     let endpoint = Endpoint::testnet();
-    let mut client = instantiate_client(endpoint.clone(), None).await.unwrap();
+    let timeout_ms = 10_000;
+    let rpc_api = Arc::new(TonicRpcClient::new(&endpoint, timeout_ms));
+
+    let mut client = ClientBuilder::new()
+        .rpc(rpc_api)
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     let keystore = FilesystemKeyStore::new("./keystore".into()).unwrap();
 
@@ -27,9 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -------------------------------------------------------------------------
     // STEP 1: Create Basic User Account
     // -------------------------------------------------------------------------
-    let (alice_account, _) = create_basic_account(&mut client, keystore.clone())
-        .await
-        .unwrap();
+    let (alice_account, _) = create_basic_account(&mut client, keystore).await.unwrap();
     println!(
         "alice account id: {:?}",
         alice_account.id().to_bech32(NetworkId::Testnet)
@@ -107,7 +118,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     delete_keystore_and_store(None).await;
 
-    let mut client = instantiate_client(endpoint, None).await.unwrap();
+    let mut client = ClientBuilder::new()
+        .rpc(Arc::new(TonicRpcClient::new(&endpoint, timeout_ms)))
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     client
         .import_account_by_id(counter_contract.id())

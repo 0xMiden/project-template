@@ -1,16 +1,18 @@
 use miden_lib::utils::ScriptBuilder;
 use template::common::{
     create_basic_account, create_library, create_network_account, create_network_note,
-    create_private_note, create_public_account, delete_keystore_and_store, instantiate_client,
-    wait_for_tx,
+    create_private_note, create_public_account, delete_keystore_and_store, wait_for_tx,
 };
 
 use miden_client::{
-    ClientError, Word, keystore::FilesystemKeyStore, rpc::Endpoint,
+    ClientError, Word,
+    builder::ClientBuilder,
+    keystore::FilesystemKeyStore,
+    rpc::{Endpoint, TonicRpcClient},
     transaction::TransactionRequestBuilder,
 };
 use miden_objects::account::NetworkId;
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 use tokio::time::{Duration, sleep};
 
 #[tokio::test]
@@ -18,7 +20,15 @@ async fn increment_counter_with_script() -> Result<(), ClientError> {
     delete_keystore_and_store(None).await;
 
     let endpoint = Endpoint::testnet();
-    let mut client = instantiate_client(endpoint.clone(), None).await.unwrap();
+    let timeout_ms = 10_000;
+    let rpc_api = Arc::new(TonicRpcClient::new(&endpoint, timeout_ms));
+
+    let mut client = ClientBuilder::new()
+        .rpc(rpc_api)
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     let sync_summary = client.sync_state().await.unwrap();
     println!("Latest block: {}", sync_summary.block_num);
@@ -81,7 +91,12 @@ async fn increment_counter_with_script() -> Result<(), ClientError> {
 
     delete_keystore_and_store(None).await;
 
-    let mut client = instantiate_client(endpoint, None).await.unwrap();
+    let mut client = ClientBuilder::new()
+        .rpc(Arc::new(TonicRpcClient::new(&endpoint, timeout_ms)))
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     client
         .import_account_by_id(counter_contract.id())
@@ -111,7 +126,15 @@ async fn increment_counter_with_network_note() -> Result<(), ClientError> {
     delete_keystore_and_store(None).await;
 
     let endpoint = Endpoint::testnet();
-    let mut client = instantiate_client(endpoint.clone(), None).await.unwrap();
+    let timeout_ms = 10_000;
+    let rpc_api = Arc::new(TonicRpcClient::new(&endpoint, timeout_ms));
+
+    let mut client = ClientBuilder::new()
+        .rpc(rpc_api)
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     let keystore = FilesystemKeyStore::new("./keystore".into()).unwrap();
 
@@ -215,7 +238,12 @@ async fn increment_counter_with_network_note() -> Result<(), ClientError> {
     // -------------------------------------------------------------------------
     delete_keystore_and_store(None).await;
 
-    let mut client = instantiate_client(endpoint, None).await.unwrap();
+    let mut client = ClientBuilder::new()
+        .rpc(Arc::new(TonicRpcClient::new(&endpoint, timeout_ms)))
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     client
         .import_account_by_id(counter_contract.id())
@@ -238,7 +266,15 @@ async fn increment_counter_with_private_note() -> Result<(), ClientError> {
     delete_keystore_and_store(None).await;
 
     let endpoint = Endpoint::testnet();
-    let mut client = instantiate_client(endpoint.clone(), None).await.unwrap();
+    let timeout_ms = 10_000;
+    let rpc_api = Arc::new(TonicRpcClient::new(&endpoint, timeout_ms));
+
+    let mut client = ClientBuilder::new()
+        .rpc(rpc_api)
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     let keystore = FilesystemKeyStore::new("./keystore".into()).unwrap();
 
@@ -362,7 +398,12 @@ async fn increment_counter_with_private_note() -> Result<(), ClientError> {
     // -------------------------------------------------------------------------
     delete_keystore_and_store(None).await;
 
-    let mut client = instantiate_client(endpoint, None).await.unwrap();
+    let mut client = ClientBuilder::new()
+        .rpc(Arc::new(TonicRpcClient::new(&endpoint, timeout_ms)))
+        .filesystem_keystore("./keystore")
+        .in_debug_mode(true)
+        .build()
+        .await?;
 
     client
         .import_account_by_id(counter_contract.id())

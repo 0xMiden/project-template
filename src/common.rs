@@ -2,14 +2,12 @@ use miden_client::{
     Client, ClientError, Felt, Word,
     account::{Account, AccountBuilder, AccountId, AccountStorageMode, AccountType, StorageSlot},
     auth::AuthSecretKey,
-    builder::ClientBuilder,
     crypto::SecretKey,
     keystore::FilesystemKeyStore,
     note::{
         Note, NoteAssets, NoteExecutionHint, NoteInputs, NoteMetadata, NoteRecipient,
         NoteRelevance, NoteTag, NoteType,
     },
-    rpc::{Endpoint, TonicRpcClient},
     store::{InputNoteRecord, NoteFilter, TransactionFilter},
     transaction::{OutputNote, TransactionId, TransactionRequestBuilder, TransactionStatus},
 };
@@ -66,34 +64,6 @@ impl From<Counter> for AccountComponent {
             )
             .with_supports_all_types()
     }
-}
-
-/// Helper to instantiate a `Client` for interacting with Miden.
-///
-/// # Arguments
-///
-/// * `endpoint` - The endpoint of the RPC server to connect to.
-/// * `store_path` - An optional path to the SQLite store.
-///
-/// # Returns
-///
-/// Returns a `Result` containing the `Client` if successful, or a `ClientError` if an error occurs.
-pub async fn instantiate_client(
-    endpoint: Endpoint,
-    store_path: Option<&str>,
-) -> Result<Client, ClientError> {
-    let timeout_ms = 10_000;
-    let rpc_api = Arc::new(TonicRpcClient::new(&endpoint, timeout_ms));
-
-    let client = ClientBuilder::new()
-        .rpc(rpc_api.clone())
-        .filesystem_keystore("./keystore")
-        .sqlite_store(store_path.unwrap_or("./store.sqlite3"))
-        .in_debug_mode(true)
-        .build()
-        .await?;
-
-    Ok(client)
 }
 
 /// Creates a public note with the specified parameters and submits it to the network.
