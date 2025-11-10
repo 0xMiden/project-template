@@ -22,3 +22,13 @@ env/
 node_modules/
 *DS_Store
 *.iml
+
+# Ignore database and keystore files
+store.sqlite3
+keystore/
+
+# Ignore contract build artifacts
+contracts/**/target/
+
+# Ignore Cargo.lock file
+Cargo.lock
