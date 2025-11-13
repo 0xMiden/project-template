@@ -5,14 +5,14 @@ edition = "2021"
 
 [dependencies]
 miden = { workspace = true }
-cargo-miden = { git = "https://github.com/0xMiden/compiler", rev = "736e80ff11686c43e29b9fdc4281fd2fd3b5b068", package = "cargo-miden" }
-miden-client = { git = "https://github.com/0xMiden/miden-client", rev="da761c59c270307f54a4024a2d81b8f98a39cbe4", features = ["tonic", "testing"] }
-miden-client-sqlite-store = { git = "https://github.com/0xMiden/miden-client", rev="da761c59c270307f54a4024a2d81b8f98a39cbe4", package = "miden-client-sqlite-store" }
-miden-lib = { version = "0.12" }
-miden-objects = { version = "0.12", default-features = false, features = ["testing"] }
+cargo-miden = { git = "https://github.com/0xMiden/compiler", branch = "next", package = "cargo-miden" }
+miden-client = { version = "0.12.2", features = ["tonic", "testing"] }
+miden-client-sqlite-store = { version = "0.12.2", package = "miden-client-sqlite-store" }
+miden-lib = { version = "0.12.2" }
+miden-objects = { version = "0.12.2", default-features = false, features = ["testing"] }
 miden-crypto = { version = "0.18", features = ["executable"] }
 miden-core = { version = "0.19" }
-miden-testing = "0.12"
+miden-testing = "0.12.2"
 miden-mast-package = { version = "0.19", default_features = false }
 tokio = { version = "1.40", features = ["rt-multi-thread", "net", "macros", "fs"] }
 rand = { version = "0.9" }
