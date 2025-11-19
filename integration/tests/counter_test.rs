@@ -4,7 +4,7 @@ use integration::helpers::{
 };
 
 use miden_client::{account::StorageMap, transaction::OutputNote, Felt, Word};
-use miden_testing::{Auth, MockChain, TransactionContextBuilder};
+use miden_testing::{Auth, MockChain};
 use std::{path::Path, sync::Arc};
 
 #[tokio::test]
@@ -36,7 +36,7 @@ async fn counter_test() -> anyhow::Result<()> {
     };
 
     // create testing counter account
-    let counter_account =
+    let mut counter_account =
         create_testing_account_from_package(contract_package.clone(), counter_cfg).await?;
 
     // create testing increment note
@@ -48,34 +48,31 @@ async fn counter_test() -> anyhow::Result<()> {
 
     // add counter account and note to mockchain
     builder.add_account(counter_account.clone())?;
-    builder.add_note(OutputNote::Full(counter_note.clone().into()));
+    builder.add_output_note(OutputNote::Full(counter_note.clone().into()));
 
     // Build the mock chain
     let mut mock_chain = builder.build()?;
-
-    // Get transaction inputs (for increment the count)
-    let tx_inputs = mock_chain.get_transaction_inputs(
-        counter_account.clone(),
-        None,
-        &[counter_note.id()],
-        &[],
-    )?;
-
     // Build the transaction context
-    let tx_context = TransactionContextBuilder::new(counter_account.clone())
-        .account_seed(None)
-        .tx_inputs(tx_inputs)
+    let tx_context = mock_chain
+        .build_tx_context(counter_account.id(), &[counter_note.id()], &[])?
         .build()?;
+
+    println!("before executing tx");
 
     // Execute the transaction
     let executed_transaction = tx_context.execute().await?;
 
+    println!("after executing tx");
+
+    // Apply the account delta to the counter account
+    counter_account.apply_delta(&executed_transaction.account_delta())?;
+
     // Add the executed transaction to the mockchain
-    let updated_counter_account =
-        mock_chain.add_pending_executed_transaction(&executed_transaction)?;
+    mock_chain.add_pending_executed_transaction(&executed_transaction)?;
+    mock_chain.prove_next_block()?;
 
     // Get the count from the updated counter account
-    let count = updated_counter_account
+    let count = counter_account
         .storage()
         .get_map_item(0, count_storage_key)?;
 

@@ -72,15 +72,10 @@ async fn main() -> Result<()> {
         .build()
         .context("Failed to build note publish transaction request")?;
 
-    let note_publish_tx_result = client
-        .new_transaction(sender_account.id(), note_publish_request)
+    let note_publish_tx_id = client
+        .submit_new_transaction(sender_account.id(), note_publish_request)
         .await
         .context("Failed to create note publish transaction")?;
-
-    client
-        .submit_transaction(note_publish_tx_result.clone())
-        .await
-        .context("Failed to submit note publish transaction")?;
 
     client
         .sync_state()
@@ -89,7 +84,7 @@ async fn main() -> Result<()> {
 
     println!(
         "Note publish transaction ID: {:?}",
-        note_publish_tx_result.executed_transaction().id().to_hex()
+        note_publish_tx_id.to_hex()
     );
 
     let consume_note_request = TransactionRequestBuilder::new()
@@ -97,25 +92,17 @@ async fn main() -> Result<()> {
         .build()
         .context("Failed to build consume note transaction request")?;
 
-    let consume_tx_result = client
-        .new_transaction(counter_account.id(), consume_note_request)
+    let consume_tx_id = client
+        .submit_new_transaction(counter_account.id(), consume_note_request)
         .await
         .context("Failed to create consume note transaction")?;
 
-    client
-        .submit_transaction(consume_tx_result.clone())
-        .await
-        .context("Failed to submit consume note transaction")?;
+    println!("Consume transaction ID: {:?}", consume_tx_id.to_hex());
 
-    println!(
-        "Consume transaction ID: {:?}",
-        consume_tx_result.executed_transaction().id().to_hex()
-    );
-
-    println!(
-        "Account delta: {:?}",
-        consume_tx_result.executed_transaction().account_delta()
-    );
+    // println!(
+    //     "Account delta: {:?}",
+    //     consume_note_request.
+    // );
 
     Ok(())
 }

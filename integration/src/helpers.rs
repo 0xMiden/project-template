@@ -1,6 +1,6 @@
 //! Common helper functions for scripts and tests
 
-use std::{collections::BTreeSet, path::Path, sync::Arc};
+use std::{borrow::Borrow, collections::BTreeSet, path::Path, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use cargo_miden::{run, OutputType};
@@ -9,20 +9,22 @@ use miden_client::{
         component::{AuthRpoFalcon512, BasicWallet, NoAuth},
         Account, AccountId, AccountStorageMode, AccountType, StorageSlot,
     },
-    auth::AuthSecretKey,
+    auth::{AuthSecretKey, PublicKeyCommitment},
     builder::ClientBuilder,
-    crypto::{FeltRng, SecretKey},
+    crypto::rpo_falcon512::SecretKey,
+    crypto::FeltRng,
     keystore::FilesystemKeyStore,
     note::{
         Note, NoteExecutionHint, NoteInputs, NoteMetadata, NoteRecipient, NoteScript, NoteTag,
         NoteType,
     },
-    rpc::{Endpoint, TonicRpcClient},
+    rpc::{Endpoint, GrpcClient},
     utils::Deserializable,
     Client, Word,
 };
+use miden_client_sqlite_store::ClientBuilderSqliteExt;
 use miden_core::{Felt, FieldElement};
-use miden_mast_package::Package;
+use miden_mast_package::{Package, SectionId};
 use miden_objects::account::{
     AccountBuilder, AccountComponent, AccountComponentMetadata, AccountComponentTemplate,
 };
@@ -46,7 +48,7 @@ pub async fn setup_client() -> Result<ClientSetup> {
     // Initialize RPC connection
     let endpoint = Endpoint::testnet();
     let timeout_ms = 10_000;
-    let rpc_api = Arc::new(TonicRpcClient::new(&endpoint, timeout_ms));
+    let rpc_client = Arc::new(GrpcClient::new(&endpoint, timeout_ms));
 
     // Initialize keystore
     let keystore_path = std::path::PathBuf::from("../keystore");
@@ -57,13 +59,10 @@ pub async fn setup_client() -> Result<ClientSetup> {
     );
 
     let store_path = std::path::PathBuf::from("../store.sqlite3");
-    let store_path_str = store_path
-        .to_str()
-        .context("Store path contains invalid UTF-8")?;
 
     let client = ClientBuilder::new()
-        .rpc(rpc_api)
-        .sqlite_store(store_path_str)
+        .rpc(rpc_client)
+        .sqlite_store(store_path)
         .authenticator(keystore.clone())
         .in_debug_mode(true.into())
         .build()
@@ -153,28 +152,40 @@ pub fn account_component_from_package(
     package: Arc<Package>,
     config: &AccountCreationConfig,
 ) -> Result<AccountComponent> {
-    let bytes = package
-        .account_component_metadata_bytes
-        .as_deref()
-        .context("Package missing account component metadata")?;
+    // Find the account component metadata section in the package
+    let account_component_metadata = package.sections.iter().find_map(|s| {
+        if s.id == SectionId::ACCOUNT_COMPONENT_METADATA {
+            Some(s.data.borrow())
+        } else {
+            None
+        }
+    });
 
-    let metadata = AccountComponentMetadata::read_from_bytes(bytes)
-        .context("Failed to deserialize account component metadata")?;
+    let account_component = match account_component_metadata {
+        None => bail!("Package missing account component metadata"),
+        Some(bytes) => {
+            let metadata = AccountComponentMetadata::read_from_bytes(bytes)
+                .context("Failed to deserialize account component metadata")?;
 
-    let library = package.unwrap_library();
-    let template = AccountComponentTemplate::new(metadata, library.as_ref().clone());
+            let template =
+                AccountComponentTemplate::new(metadata, package.unwrap_library().as_ref().clone());
 
-    let component = AccountComponent::new(template.library().clone(), config.storage_slots.clone())
-        .context("Failed to create account component")?;
+            let component =
+                AccountComponent::new(template.library().clone(), config.storage_slots.clone())
+                    .context("Failed to create account component")?;
 
-    // Use supported types from config if provided, otherwise default to RegularAccountImmutableCode
-    let supported_types = if let Some(types) = &config.supported_types {
-        BTreeSet::from_iter(types.clone())
-    } else {
-        BTreeSet::from_iter([AccountType::RegularAccountImmutableCode])
+            // Use supported types from config if provided, otherwise default to RegularAccountImmutableCode
+            let supported_types = if let Some(types) = &config.supported_types {
+                BTreeSet::from_iter(types.clone())
+            } else {
+                BTreeSet::from_iter([AccountType::RegularAccountImmutableCode])
+            };
+
+            component.with_supported_types(supported_types)
+        }
     };
 
-    Ok(component.with_supported_types(supported_types))
+    Ok(account_component)
 }
 
 /// Creates an account with a custom component from a compiled package
@@ -200,7 +211,7 @@ pub async fn create_account_from_package(
     let mut init_seed = [0_u8; 32];
     client.rng().fill_bytes(&mut init_seed);
 
-    let (account, seed) = AccountBuilder::new(init_seed)
+    let account = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
         .storage_mode(config.storage_mode)
         .with_component(account_component)
@@ -211,7 +222,7 @@ pub async fn create_account_from_package(
     println!("Account ID: {:?}", account.id());
 
     client
-        .add_account(&account, Some(seed), false)
+        .add_account(&account, false)
         .await
         .context("Failed to add account to client")?;
 
@@ -358,15 +369,17 @@ pub async fn create_basic_wallet_account(
     let builder = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
         .storage_mode(config.storage_mode)
-        .with_auth_component(AuthRpoFalcon512::new(key_pair.public_key()))
+        .with_auth_component(AuthRpoFalcon512::new(PublicKeyCommitment::from(
+            key_pair.public_key().to_commitment(),
+        )))
         .with_component(BasicWallet);
 
-    let (account, seed) = builder
+    let account = builder
         .build()
         .context("Failed to build basic wallet account")?;
 
     client
-        .add_account(&account, Some(seed), false)
+        .add_account(&account, false)
         .await
         .context("Failed to add account to client")?;
 
