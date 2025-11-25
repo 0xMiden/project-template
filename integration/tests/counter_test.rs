@@ -57,12 +57,8 @@ async fn counter_test() -> anyhow::Result<()> {
         .build_tx_context(counter_account.id(), &[counter_note.id()], &[])?
         .build()?;
 
-    println!("before executing tx");
-
     // Execute the transaction
     let executed_transaction = tx_context.execute().await?;
-
-    println!("after executing tx");
 
     // Apply the account delta to the counter account
     counter_account.apply_delta(&executed_transaction.account_delta())?;
