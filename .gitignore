@@ -30,5 +30,3 @@ keystore/
 # Ignore contract build artifacts
 contracts/**/target/
 
-# Ignore Cargo.lock file
-Cargo.lock
