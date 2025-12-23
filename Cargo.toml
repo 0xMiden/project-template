@@ -8,6 +8,4 @@ resolver = "2"
 edition = "2021"
 
 [workspace.dependencies]
-# TODO: switch to the released SDK version after the v0.6 compiler release
-# miden = { version = "0.7" }
-miden = { git = "https://github.com/0xMiden/compiler", branch = "next" }
+miden = { version = "0.8" }

@@ -1851,8 +1851,9 @@ dependencies = [
 
 [[package]]
 name = "miden"
-version = "0.7.1"
-source = "git+https://github.com/0xMiden/compiler?branch=next#7d51997b20bb6178987a1323d5b7d283385348ec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db443dc2be686e14bd2fd4213476146d2d4b4b14d52ac7191f51a789ae5b7678"
 dependencies = [
  "miden-base",
  "miden-base-sys",
@@ -1912,8 +1913,9 @@ dependencies = [
 
 [[package]]
 name = "miden-base"
-version = "0.7.1"
-source = "git+https://github.com/0xMiden/compiler?branch=next#7d51997b20bb6178987a1323d5b7d283385348ec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fc4d8ec7077dc50d03d7afecd5308e933b87abe7ffc0ac1e62abda53dd9dc62"
 dependencies = [
  "miden-base-macros",
  "miden-base-sys",
@@ -1922,8 +1924,9 @@ dependencies = [
 
 [[package]]
 name = "miden-base-macros"
-version = "0.7.1"
-source = "git+https://github.com/0xMiden/compiler?branch=next#7d51997b20bb6178987a1323d5b7d283385348ec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07f1ef27517f1d2baf20c66f0795630e74370680798060ed94dc05d3565cd2a9"
 dependencies = [
  "heck",
  "miden-objects",
@@ -1938,8 +1941,9 @@ dependencies = [
 
 [[package]]
 name = "miden-base-sys"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?branch=next#7d51997b20bb6178987a1323d5b7d283385348ec"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "862632407d9f60286e82ad6e56f16a0356b1f266d3fb41d13866cfdc326c2090"
 dependencies = [
  "miden-stdlib-sys",
 ]
@@ -2277,8 +2281,9 @@ dependencies = [
 
 [[package]]
 name = "miden-sdk-alloc"
-version = "0.7.0"
-source = "git+https://github.com/0xMiden/compiler?branch=next#7d51997b20bb6178987a1323d5b7d283385348ec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7eef3b8651b93468a2b132c885b21aa6d488bf6cd78ba1f736ff90fa8c1fb43"
 
 [[package]]
 name = "miden-stdlib"
@@ -2298,8 +2303,9 @@ dependencies = [
 
 [[package]]
 name = "miden-stdlib-sys"
-version = "0.7.1"
-source = "git+https://github.com/0xMiden/compiler?branch=next#7d51997b20bb6178987a1323d5b7d283385348ec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5978a2982cbeb64441e90c3e6ee7995ee513dbd1cd399f468fb7d3a608ecaf13"
 
 [[package]]
 name = "miden-testing"
