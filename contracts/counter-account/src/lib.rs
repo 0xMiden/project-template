@@ -1,5 +1,6 @@
 // Do not link against libstd (i.e. anything defined in `std::`)
 #![no_std]
+#![feature(alloc_error_handler)]
 
 // However, we could still use some standard library types while
 // remaining no-std compatible, if we uncommented the following lines:
@@ -27,7 +28,7 @@ impl CounterContract {
     }
 
     /// Increments the counter value stored in the contract's storage map by one.
-    pub fn increment_count(&self) -> Felt {
+    pub fn increment_count(&mut self) -> Felt {
         // Define the same fixed key
         let key = Word::from([felt!(0), felt!(0), felt!(0), felt!(1)]);
         // Read the current value
