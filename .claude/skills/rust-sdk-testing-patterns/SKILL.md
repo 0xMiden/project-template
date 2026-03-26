@@ -148,6 +148,19 @@ Genesis is block 0. Each `prove_next_block()` advances the block number by 1. In
 
 Always use `create_testing_note_from_package` (or mirror its logic with `.masp` package files) for creating notes in tests. Manually constructed notes may fail with a "private notes cannot be converted" error. See [counter_test.rs](../../../integration/tests/counter_test.rs) for the working pattern.
 
+## Asset-Bearing Note Example
+
+To create a note that carries fungible assets in tests:
+
+1. Create a `FungibleAsset` from a faucet ID and amount.
+2. Wrap it in `NoteAssets::new(vec![Asset::Fungible(fungible_asset)])`.
+3. Pass the `NoteAssets` into `NoteCreationConfig { assets: note_assets, ..Default::default() }`.
+4. Use `create_testing_note_from_package` as usual.
+
+The faucet must be set up first (see Step 3) and the sender wallet must hold sufficient assets (see Step 2).
+
+See [miden-bank deposit_test.rs](../../../../miden-bank/integration/tests/deposit_test.rs) lines 56-70 for the complete working pattern, including `FungibleAsset::new()`, `NoteAssets::new()`, and `NoteCreationConfig` usage.
+
 ## Key Dependencies
 
 See [integration/Cargo.toml](../../../integration/Cargo.toml) for the current dependency versions used in this project.
