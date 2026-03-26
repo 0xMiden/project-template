@@ -1,6 +1,6 @@
 ---
 name: rust-sdk-patterns
-description: Complete guide to writing Miden smart contracts with the Rust SDK. Covers #[component], #[note], #[tx_script] macros, storage patterns, native functions, asset handling, cross-component calls, and P2ID note creation. Use when writing, editing, or reviewing Miden Rust contract code.
+description: Complete guide to writing Miden smart contracts with the Rust SDK. Covers #[component], #[note], #[tx_script] macros, storage patterns, native functions, asset handling, cross-component calls, P2ID note creation, and asset receiving via component methods. Use when writing, editing, or reviewing Miden Rust contract code.
 ---
 
 # Miden Rust SDK Patterns
@@ -63,11 +63,15 @@ fn run(_arg: Word, account: &mut Account) {
 
 Fungible asset Word layout: `[amount, 0, faucet_suffix, faucet_prefix]`
 
+**Constructor**: `Asset::new(word)` creates an Asset from a Word.
+
+See [miden-bank bank-account](../../../../miden-bank/contracts/bank-account/src/lib.rs) for complete asset handling patterns including deposit, withdrawal, and balance tracking.
+
 ```rust
 // Access asset amount
 let amount = asset.inner[0];
 
-// Add asset to account vault
+// Add asset to account vault (only from component methods, not note scripts — see pitfall P13)
 native_account::add_asset(asset);
 
 // Remove asset from account vault
@@ -76,28 +80,22 @@ native_account::remove_asset(asset.clone());
 
 ## P2ID Output Note Creation
 
-To send assets to another account, create a P2ID (Pay-to-ID) output note:
+To send assets to another account, create a P2ID (Pay-to-ID) output note. See [miden-bank bank-account](../../../../miden-bank/contracts/bank-account/src/lib.rs) `create_p2id_note()` for a complete working implementation.
 
-```rust
-fn create_p2id_note(&mut self, serial_num: Word, asset: &Asset,
-                     recipient_id: AccountId, tag: Felt, note_type: Felt) {
-    let tag = Tag::from(tag);
-    let note_type = NoteType::from(note_type);
-    let script_root = Self::p2id_note_root(); // Hardcoded P2ID script digest
+**Key details:**
 
-    // P2ID inputs: [suffix, prefix] of recipient
-    let recipient = Recipient::compute(serial_num, script_root,
-        vec![recipient_id.suffix, recipient_id.prefix]);
-
-    let note_idx = output_note::create(tag, note_type, recipient);
-    native_account::remove_asset(asset.clone());
-    output_note::add_asset(asset.clone(), note_idx);
-}
-```
+- `Recipient::compute(serial_num: Word, script_digest: Digest, inputs: Vec<Felt>)` — the second parameter is `Digest`, not `Word`.
+- `Digest` does not implement `Copy`. Use `.clone()` when reusing a digest in loops or across calls.
+- P2ID inputs must be padded to 8 elements: `[suffix, prefix, 0, 0, 0, 0, 0, 0]`.
+- In host/test code, use `NoteRecipient` (from miden-client) instead of `Recipient` for constructing notes.
 
 ## Note Inputs
 
-Notes receive data via inputs (Vec<Felt>), accessed with `active_note::get_inputs()`:
+Notes receive data via inputs (Vec<Felt>), accessed with `active_note::get_inputs()`.
+
+**Requires alloc**: Since `get_inputs()` returns `Vec<Felt>`, you must have `extern crate alloc;` and `use alloc::vec::Vec;` in your `#![no_std]` contract. See the [no-std setup in any contract](../../../contracts/counter-account/src/lib.rs).
+
+**Usage:**
 
 ```rust
 let inputs = active_note::get_inputs();
@@ -116,10 +114,10 @@ Then import the bindings in your Rust code. See [increment-note/src/lib.rs](../.
 
 ```rust
 // Felt from integer
-let f = felt!(42);
-let f = Felt::new(42);
+let f = felt!(42);                     // preferred for literals in contract code
+let f = Felt::new(42);                 // returns Result in contracts, Felt in host code (see pitfall P8)
 let f = Felt::from_u32(42);
-let f = Felt::from_u64_unchecked(42);
+let f = Felt::from_u64_unchecked(42);  // when value is known < field modulus
 
 // Word from Felts
 let w = Word::from([f0, f1, f2, f3]);
@@ -139,6 +137,14 @@ If you need heap allocation (Vec, String, etc.):
 extern crate alloc;
 use alloc::vec::Vec;
 ```
+
+## Asset Receiving via Component Methods
+
+Note scripts cannot call `native_account::add_asset()` directly (see pitfall P13). The canonical pattern is for an account component to expose a public method that wraps `native_account::add_asset()`, and note scripts call that method via cross-component bindings.
+
+See [miden-bank bank-account deposit()](../../../../miden-bank/contracts/bank-account/src/lib.rs) for the component side: the `deposit()` method validates the deposit, updates storage, and calls `native_account::add_asset()`.
+
+See [miden-bank deposit-note](../../../../miden-bank/contracts/deposit-note/src/lib.rs) for the note side: the note script calls `bank_account::deposit()` via generated bindings.
 
 ## Validation Checklist
 
