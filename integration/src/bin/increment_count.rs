@@ -5,8 +5,8 @@ use integration::helpers::{
 
 use anyhow::{Context, Result};
 use miden_client::{
-    account::{StorageMap, StorageSlot, StorageSlotName},
-    transaction::{OutputNote, TransactionRequestBuilder},
+    account::{StorageMap, StorageMapKey, StorageSlot, StorageSlotName},
+    transaction::TransactionRequestBuilder,
     Felt, Word,
 };
 use std::{path::Path, sync::Arc};
@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
         StorageSlotName::new("miden::component::miden_counter_account::count_map").unwrap();
     let storage_slots = vec![StorageSlot::with_map(
         counter_storage_slot.clone(),
-        StorageMap::with_entries([(count_storage_key, initial_count)]).unwrap(),
+        StorageMap::with_entries([(StorageMapKey::new(count_storage_key), initial_count)]).unwrap(),
     )];
     let counter_cfg = AccountCreationConfig {
         storage_slots,
@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
 
     // build and submit transaction to publish note
     let note_publish_request = TransactionRequestBuilder::new()
-        .own_output_notes(vec![OutputNote::Full(counter_note.clone())])
+        .own_output_notes(vec![counter_note.clone()])
         .build()
         .context("Failed to build note publish transaction request")?;
 

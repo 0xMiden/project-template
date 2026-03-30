@@ -1,20 +1,20 @@
 //! Common helper functions for scripts and tests
 
-use std::{borrow::Borrow, collections::BTreeSet, path::Path, sync::Arc};
+use std::{borrow::Borrow, path::Path, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use cargo_miden::{run, OutputType};
 use miden_client::{
     account::{
-        component::{AccountComponentMetadata, AuthFalcon512Rpo, BasicWallet, NoAuth},
+        component::{AccountComponentMetadata, BasicWallet, NoAuth},
         Account, AccountBuilder, AccountComponent, AccountId, AccountStorageMode, AccountType,
         StorageSlot,
     },
-    auth::{AuthSecretKey, PublicKeyCommitment},
+    auth::{AuthSchemeId, AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
-    crypto::{rpo_falcon512::SecretKey, FeltRng},
-    keystore::FilesystemKeyStore,
-    note::{Note, NoteInputs, NoteMetadata, NoteRecipient, NoteScript, NoteTag, NoteType},
+    crypto::FeltRng,
+    keystore::{FilesystemKeyStore, Keystore},
+    note::{Note, NoteMetadata, NoteRecipient, NoteScript, NoteStorage, NoteTag, NoteType},
     rpc::{Endpoint, GrpcClient},
     utils::Deserializable,
     Client, Felt, Word,
@@ -25,7 +25,9 @@ use rand::RngCore;
 
 /// Test setup configuration containing initialized client and keystore
 pub struct ClientSetup {
+    /// The configured Miden client instance.
     pub client: Client<FilesystemKeyStore>,
+    /// The filesystem-backed keystore used by the client.
     pub keystore: Arc<FilesystemKeyStore>,
 }
 
@@ -111,10 +113,12 @@ pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
 /// Configuration for creating an account with a custom component
 #[derive(Clone)]
 pub struct AccountCreationConfig {
+    /// The account type to create.
     pub account_type: AccountType,
+    /// The account storage visibility mode.
     pub storage_mode: AccountStorageMode,
+    /// Initial storage slots to seed into the component.
     pub storage_slots: Vec<StorageSlot>,
-    pub supported_types: Option<Vec<AccountType>>,
 }
 
 impl Default for AccountCreationConfig {
@@ -123,7 +127,6 @@ impl Default for AccountCreationConfig {
             account_type: AccountType::RegularAccountImmutableCode,
             storage_mode: AccountStorageMode::Public,
             storage_slots: vec![],
-            supported_types: None,
         }
     }
 }
@@ -161,18 +164,10 @@ pub fn account_component_from_package(
             let component = AccountComponent::new(
                 package.unwrap_library().as_ref().clone(),
                 config.storage_slots.clone(),
+                metadata,
             )
-            .context("Failed to create account component")?
-            .with_metadata(metadata);
-
-            // Use supported types from config if provided, otherwise default to RegularAccountImmutableCode
-            let supported_types = if let Some(types) = &config.supported_types {
-                BTreeSet::from_iter(types.clone())
-            } else {
-                BTreeSet::from_iter([AccountType::RegularAccountImmutableCode])
-            };
-
-            component.with_supported_types(supported_types)
+            .context("Failed to create account component")?;
+            component
         }
     };
 
@@ -220,6 +215,14 @@ pub async fn create_account_from_package(
     Ok(account)
 }
 
+/// Creates an existing account instance from a compiled package for testing.
+///
+/// # Arguments
+/// * `package` - The compiled package containing the account component
+/// * `config` - Configuration for account creation
+///
+/// # Errors
+/// Returns an error if the account component or account cannot be created.
 pub async fn create_testing_account_from_package(
     package: Arc<Package>,
     config: AccountCreationConfig,
@@ -240,10 +243,14 @@ pub async fn create_testing_account_from_package(
 
 /// Configuration for creating a note
 pub struct NoteCreationConfig {
+    /// The note visibility type.
     pub note_type: NoteType,
+    /// The note tag to attach to the metadata.
     pub tag: NoteTag,
+    /// Assets to include in the note.
     pub assets: miden_client::note::NoteAssets,
-    pub inputs: Vec<Felt>,
+    /// Storage items passed to the note recipient.
+    pub storage: Vec<Felt>,
 }
 
 impl Default for NoteCreationConfig {
@@ -253,7 +260,7 @@ impl Default for NoteCreationConfig {
             // Note: This should never fail for valid inputs (0, 0)
             tag: NoteTag::new(0),
             assets: Default::default(),
-            inputs: Default::default(),
+            storage: Default::default(),
         }
     }
 }
@@ -284,14 +291,23 @@ pub fn create_note_from_package(
     );
 
     let serial_num = client.rng().draw_word();
-    let note_inputs = NoteInputs::new(config.inputs).context("Failed to create note inputs")?;
-    let recipient = NoteRecipient::new(serial_num, note_script, note_inputs);
+    let note_storage = NoteStorage::new(config.storage).context("Failed to create note storage")?;
+    let recipient = NoteRecipient::new(serial_num, note_script, note_storage);
 
-    let metadata = NoteMetadata::new(sender_id, config.note_type, config.tag);
+    let metadata = NoteMetadata::new(sender_id, config.note_type).with_tag(config.tag);
 
     Ok(Note::new(config.assets, metadata, recipient))
 }
 
+/// Creates a deterministic note from a compiled package for testing.
+///
+/// # Arguments
+/// * `package` - The compiled package containing the note script
+/// * `sender_id` - The ID of the account sending the note
+/// * `config` - Configuration for note creation
+///
+/// # Errors
+/// Returns an error if note creation fails.
 pub fn create_testing_note_from_package(
     package: Arc<Package>,
     sender_id: AccountId,
@@ -308,10 +324,10 @@ pub fn create_testing_note_from_package(
     let serial_num =
         Word::try_from(random_u64s).context("Failed to convert random u64s to word")?;
 
-    let note_inputs = NoteInputs::new(config.inputs).context("Failed to create note inputs")?;
-    let recipient = NoteRecipient::new(serial_num, note_script, note_inputs);
+    let note_storage = NoteStorage::new(config.storage).context("Failed to create note storage")?;
+    let recipient = NoteRecipient::new(serial_num, note_script, note_storage);
 
-    let metadata = NoteMetadata::new(sender_id, config.note_type, config.tag);
+    let metadata = NoteMetadata::new(sender_id, config.note_type).with_tag(config.tag);
 
     Ok(Note::new(config.assets, metadata, recipient))
 }
@@ -336,14 +352,15 @@ pub async fn create_basic_wallet_account(
     let mut init_seed = [0_u8; 32];
     client.rng().fill_bytes(&mut init_seed);
 
-    let key_pair = SecretKey::with_rng(client.rng());
+    let key_pair = AuthSecretKey::new_falcon512_poseidon2_with_rng(client.rng());
 
     let builder = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
         .storage_mode(config.storage_mode)
-        .with_auth_component(AuthFalcon512Rpo::new(PublicKeyCommitment::from(
+        .with_auth_component(AuthSingleSig::new(
             key_pair.public_key().to_commitment(),
-        )))
+            AuthSchemeId::Falcon512Poseidon2,
+        ))
         .with_component(BasicWallet);
 
     let account = builder
@@ -356,7 +373,8 @@ pub async fn create_basic_wallet_account(
         .context("Failed to add account to client")?;
 
     keystore
-        .add_key(&AuthSecretKey::Falcon512Rpo(key_pair))
+        .add_key(&key_pair, account.id())
+        .await
         .context("Failed to add key to keystore")?;
 
     Ok(account)
