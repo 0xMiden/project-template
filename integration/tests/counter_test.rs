@@ -1,3 +1,15 @@
+use integration::helpers::{
+    build_project_in_dir, create_testing_account_from_package, create_testing_note_from_package,
+    AccountCreationConfig, NoteCreationConfig,
+};
+
+use miden_client::{
+    account::{StorageMap, StorageMapKey, StorageSlot, StorageSlotName},
+    auth::AuthSchemeId,
+    transaction::RawOutputNote,
+    Felt, Word,
+};
+use miden_testing::{Auth, MockChain};
 use std::{path::Path, sync::Arc};
 
 use anyhow::Context;
@@ -64,6 +76,7 @@ async fn counter_test() -> anyhow::Result<()> {
         .context("failed to build counter note from package")?;
 
     // add counter account and note to mockchain
+    builder.add_account(counter_account.clone())?;
     builder.add_output_note(RawOutputNote::Full(counter_note.clone()));
 
     // Build the mock chain

@@ -7,6 +7,11 @@ use integration::helpers::{
 use anyhow::{Context, Result};
 use miden_client::{account::component::InitStorageData, transaction::TransactionRequestBuilder};
 use miden_standards::testing::note::NoteBuilder;
+use miden_client::{
+    account::{StorageMap, StorageMapKey, StorageSlot, StorageSlotName},
+    transaction::TransactionRequestBuilder,
+    Felt, Word,
+};
 use std::{path::Path, sync::Arc};
 
 #[tokio::main]

@@ -1,18 +1,20 @@
 //! Common helper functions for scripts and tests
 
-use std::{path::Path, sync::Arc};
+use std::{borrow::Borrow, path::Path, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use cargo_miden::{run, OutputType};
 use miden_client::{
     account::{
-        component::{BasicWallet, InitStorageData, NoAuth},
-        Account, AccountBuilder, AccountComponent, AccountStorageMode, AccountType,
-        StorageSlotName,
+        component::{AccountComponentMetadata, BasicWallet, NoAuth},
+        Account, AccountBuilder, AccountComponent, AccountId, AccountStorageMode, AccountType,
+        StorageSlot, StorageSlotName,
     },
     auth::{AuthSchemeId, AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
+    crypto::FeltRng,
     keystore::{FilesystemKeyStore, Keystore},
+    note::{Note, NoteMetadata, NoteRecipient, NoteScript, NoteStorage, NoteTag, NoteType},
     rpc::{Endpoint, GrpcClient},
     utils::Deserializable,
     Client, Felt, Word,
@@ -128,6 +130,8 @@ pub struct AccountCreationConfig {
     pub storage_mode: AccountStorageMode,
     /// Initial component storage data keyed by storage slot schema.
     pub init_storage_data: InitStorageData,
+    /// Initial storage slots to seed into the component.
+    pub storage_slots: Vec<StorageSlot>,
 }
 
 impl Default for AccountCreationConfig {
