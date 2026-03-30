@@ -39,7 +39,7 @@ async fn counter_test() -> anyhow::Result<()> {
     // The slot name is constructed as
     // `miden::component::[to_underscore(Cargo.toml:package.metadata.component.package)]::[field_name]`
     let counter_storage_slot =
-        StorageSlotName::new("miden::component::miden_counter_account::count_map").unwrap();
+        StorageSlotName::new("miden_counter_account::counter_contract::count_map").unwrap();
     let storage_slots = vec![StorageSlot::with_map(
         counter_storage_slot.clone(),
         StorageMap::with_entries([(StorageMapKey::new(count_storage_key), initial_count)]).unwrap(),
