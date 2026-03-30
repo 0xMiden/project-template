@@ -18,7 +18,7 @@ use miden_client::{
     Client, Felt, Word,
 };
 use miden_client_sqlite_store::ClientBuilderSqliteExt;
-use miden_mast_package::Package;
+use miden_mast_package::{Package, SectionId};
 use rand::RngCore;
 
 /// Test setup configuration containing initialized client and keystore
