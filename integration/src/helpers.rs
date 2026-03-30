@@ -17,10 +17,9 @@ use miden_client::{
     note::{Note, NoteInputs, NoteMetadata, NoteRecipient, NoteScript, NoteTag, NoteType},
     rpc::{Endpoint, GrpcClient},
     utils::Deserializable,
-    Client, Word,
+    Client, Felt, Word,
 };
 use miden_client_sqlite_store::ClientBuilderSqliteExt;
-use miden_core::Felt;
 use miden_mast_package::{Package, SectionId};
 use rand::RngCore;
 
