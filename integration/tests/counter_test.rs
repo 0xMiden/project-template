@@ -4,8 +4,9 @@ use integration::helpers::{
 };
 
 use miden_client::{
-    account::{StorageMap, StorageSlot, StorageSlotName},
-    transaction::OutputNote,
+    account::{StorageMap, StorageMapKey, StorageSlot, StorageSlotName},
+    auth::AuthSchemeId,
+    transaction::RawOutputNote,
     Felt, Word,
 };
 use miden_testing::{Auth, MockChain};
@@ -17,7 +18,9 @@ async fn counter_test() -> anyhow::Result<()> {
     let mut builder = MockChain::builder();
 
     // Crate note sender account
-    let sender = builder.add_existing_wallet(Auth::BasicAuth)?;
+    let sender = builder.add_existing_wallet(Auth::BasicAuth {
+        auth_scheme: AuthSchemeId::Falcon512Poseidon2,
+    })?;
 
     // Build contracts
     let contract_package = Arc::new(build_project_in_dir(
@@ -39,7 +42,7 @@ async fn counter_test() -> anyhow::Result<()> {
         StorageSlotName::new("miden::component::miden_counter_account::count_map").unwrap();
     let storage_slots = vec![StorageSlot::with_map(
         counter_storage_slot.clone(),
-        StorageMap::with_entries([(count_storage_key, initial_count)]).unwrap(),
+        StorageMap::with_entries([(StorageMapKey::new(count_storage_key), initial_count)]).unwrap(),
     )];
     let counter_cfg = AccountCreationConfig {
         storage_slots,
@@ -59,7 +62,7 @@ async fn counter_test() -> anyhow::Result<()> {
 
     // add counter account and note to mockchain
     builder.add_account(counter_account.clone())?;
-    builder.add_output_note(OutputNote::Full(counter_note.clone()));
+    builder.add_output_note(RawOutputNote::Full(counter_note.clone()));
 
     // Build the mock chain
     let mut mock_chain = builder.build()?;
