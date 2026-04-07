@@ -17,12 +17,14 @@ let new_balance = current_balance - withdraw_amount;
 // If withdraw_amount > current_balance, new_balance ≈ 2^64 (wraps!)
 
 // SAFE — always validate first
-assert!(current_balance.as_u64() >= withdraw_amount.as_u64(),
-        "Insufficient balance");
+assert!(
+    current_balance.as_canonical_u64() >= withdraw_amount.as_canonical_u64(),
+    "Insufficient balance"
+);
 let new_balance = current_balance - withdraw_amount;
 ```
 
-**Rule**: ALWAYS check `.as_u64()` values before any Felt subtraction.
+**Rule**: ALWAYS check `.as_canonical_u64()` values before any Felt subtraction.
 
 ## P2: Felt Comparison Operators Are Misleading for Quantity Logic
 
@@ -35,10 +37,11 @@ let new_balance = current_balance - withdraw_amount;
 if balance > threshold { ... }
 
 // CORRECT for business logic — compare as integers
-if balance.as_u64() > threshold.as_u64() { ... }
+if balance.as_canonical_u64() > threshold.as_canonical_u64() { ... }
+- [ ] `Recipient::compute(...)` replaced with `note::build_recipient(...)`
 ```
 
-**Rule**: For quantity/business logic, ALWAYS convert to `.as_u64()` before using comparison operators.
+**Rule**: For quantity/business logic, ALWAYS convert to `.as_canonical_u64()` before using comparison operators.
 
 ## P3: Function Argument Limit (4 Words / 16 Felts)
 
@@ -54,23 +57,47 @@ fn process(a: Word, b: Word, c: Word, d: Word, e: Word) { ... } // > 4 Words!
 fn process(a: &Word, b: &Word, c: &Word, d: &Word, e: &Word) { ... }
 ```
 
-## P4: Storage Slot Naming Convention
+## P4: Storage API Is Typed
 
-**Severity**: Medium — causes silent zero returns in tests
+**Severity**: Medium — old examples no longer compile
 
-Storage slot names follow a strict pattern. Getting it wrong returns zero silently.
+The old `Value` / untyped `StorageMap` API is gone. Account storage is now:
 
-**Pattern**: `miden::component::[snake_case(package)]::[field_name]`
+- `StorageValue<T>` for a single typed slot
+- `StorageMap<K, V>` for typed maps
+- `get()` / `set()` methods instead of `.read()` / `.write()`
+- `K: WordKey`, `T: WordValue`, `V: WordValue`
 
-**Conversion rule**: Replace `:` and `-` with `_` in the package name from `[package.metadata.component] package = "..."`.
+```rust
+#[component]
+struct CounterContract {
+    #[storage(description = "single typed slot")]
+    counter: StorageValue<Felt>,
 
-| Package in Cargo.toml | Field | Storage Slot Name |
-|----------------------|-------|-------------------|
-| `miden:counter-account` | `count_map` | `miden::component::miden_counter_account::count_map` |
-| `miden:bank-account` | `balances` | `miden::component::miden_bank_account::balances` |
-| `miden:bank-account` | `initialized` | `miden::component::miden_bank_account::initialized` |
+    #[storage(description = "typed map")]
+    balances: StorageMap<AccountId, Felt>,
+}
+```
 
-## P5: No-std Environment
+If you need custom keys or values, implement `WordKey` / `WordValue` by converting to and from a single `Word`.
+
+## P5: Storage Slot Naming Convention
+
+**Severity**: Medium — causes silent default-value reads in tests
+
+Storage slot names follow a strict pattern. Getting it wrong often returns the default value silently.
+
+**Pattern**: `[component_package_or_name]::[snake_case(component_struct)]::[field_name]`
+
+**Conversion rule**: Replace characters outside `[A-Za-z0-9_]` with `_` in the package or component name. The package comes from `[package.metadata.component] package = "..."`, with any `@version` suffix ignored.
+
+| Package in Cargo.toml | Component Struct | Field | Storage Slot Name |
+|----------------------|------------------|-------|-------------------|
+| `miden:counter-account` | `CounterContract` | `count_map` | `miden_counter_account::counter_contract::count_map` |
+| `miden:bank-account` | `BankAccount` | `balances` | `miden_bank_account::bank_account::balances` |
+| `miden:bank-account` | `BankAccount` | `initialized` | `miden_bank_account::bank_account::initialized` |
+
+## P6: No-std Environment
 
 **Severity**: Medium -- causes compilation errors
 
@@ -84,31 +111,49 @@ extern crate alloc;
 use alloc::vec::Vec;
 ```
 
-## P6: Asset Word Layout
+## P7: Asset ABI Is Two Words, Not One
 
-**Severity**: Medium — creates invalid assets
+**Severity**: Medium — old `asset.inner[...]` code is stale
 
-Fungible assets have a specific Word layout. Getting the order wrong creates invalid assets or reads wrong amounts.
+`Asset` is now:
 
-```
-Asset Word: [amount, 0, faucet_suffix, faucet_prefix]
-              [0]   [1]      [2]            [3]
+```rust
+pub struct Asset {
+    pub key: Word,
+    pub value: Word,
+}
 ```
 
 ```rust
-// Reading amount from an asset
-let amount = asset.inner[0];
+// Reading the amount from a fungible asset
+let amount = asset.value[0];
 
-// Constructing asset key for storage (including faucet identity)
-let key = Word::from([
-    depositor.prefix,
-    depositor.suffix,
-    asset.inner[3],  // faucet prefix
-    asset.inner[2],  // faucet suffix
-]);
+// Persisting or comparing the asset class
+let asset_key = asset.key;
 ```
 
-## P7: P2ID Note Root Hardcoding
+Do not assume the old single-word asset layout. Use `asset.key` and `asset.value`, or protocol helpers, instead of reconstructing from old `asset.inner[...]` offsets.
+
+## P8: `Recipient::compute` Was Removed
+
+**Severity**: Medium — causes compilation errors after upgrading
+
+Building recipients now goes through the note binding:
+
+```rust
+extern crate alloc;
+use alloc::vec;
+
+let recipient = note::build_recipient(
+    serial_num,
+    script_root,
+    vec![recipient_id.suffix, recipient_id.prefix],
+);
+```
+
+`active_note::get_inputs()` also became `active_note::get_storage()`.
+
+## P9: P2ID Note Root Hardcoding
 
 **Severity**: Low-Medium — breaks after miden-standards updates
 
@@ -118,12 +163,15 @@ For any note that is being created within the compiler code, the MAST root diges
 
 ```rust
 fn p2id_note_root() -> Digest {
-    Digest::from_word(Word::new([
-        Felt::from_u64_unchecked(13362761878458161062),
-        Felt::from_u64_unchecked(15090726097241769395),
-        Felt::from_u64_unchecked(444910447169617901),
-        Felt::from_u64_unchecked(3558201871398422326),
-    ]))
+    Digest::from_word(
+        Word::try_from([
+            13362761878458161062_u64,
+            15090726097241769395_u64,
+            444910447169617901_u64,
+            3558201871398422326_u64,
+        ])
+        .unwrap(),
+    )
 }
 ```
 
@@ -135,10 +183,12 @@ fn p2id_note_root() -> Digest {
 
 | Pitfall | One-Line Rule |
 |---------|--------------|
-| P1 Felt arithmetic | Always `.as_u64()` before subtraction |
-| P2 Felt comparison | Always `.as_u64()` for `<` `>` `<=` `>=` in business logic |
+| P1 Felt arithmetic | Always `.as_canonical_u64()` before subtraction |
+| P2 Felt comparison | Always `.as_canonical_u64()` for `<` `>` `<=` `>=` in business logic |
 | P3 Arg limit | Max 4 Words per function — pass by reference |
-| P4 Storage names | `miden::component::pkg_name::field` (underscores) |
-| P5 No-std | `#![no_std]` + `#![feature(alloc_error_handler)]` |
-| P6 Asset layout | `[amount, 0, suffix, prefix]` |
-| P7 P2ID root | Verify digest after dependency updates |
+| P4 Storage API | Use `StorageValue<T>` / `StorageMap<K, V>` with `WordValue` / `WordKey` |
+| P5 Storage names | `package_or_name::component_struct::field` |
+| P6 No-std | `#![no_std]` + `#![feature(alloc_error_handler)]` |
+| P7 Asset ABI | Use `asset.key` + `asset.value`, not `asset.inner` |
+| P8 Recipient builder | Use `note::build_recipient(...)` |
+| P9 P2ID root | Verify digest after dependency updates |
