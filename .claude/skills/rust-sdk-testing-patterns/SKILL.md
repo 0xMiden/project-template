@@ -39,20 +39,20 @@ See [counter_test.rs](../../../integration/tests/counter_test.rs) lines 23-30 fo
 
 **Storage slot naming convention** (CRITICAL):
 ```
-miden::component::[snake_case(package.metadata.component.package)]::[field_name]
+[component_package_or_name]::[snake_case(component_struct)]::[field_name]
 ```
 
 Examples:
-- Package `miden:counter-account`, field `count_map` -> `miden::component::miden_counter_account::count_map`
-- Package `miden:bank-account`, field `balances` -> `miden::component::miden_bank_account::balances`
+- Package `miden:counter-account`, component `CounterContract`, field `count_map` -> `miden_counter_account::counter_contract::count_map`
+- Package `miden:bank-account`, component `BankAccount`, field `balances` -> `miden_bank_account::bank_account::balances`
 
-Rule: Replace colons and hyphens with underscores in the package name.
+Rule: Replace characters outside `[A-Za-z0-9_]` with `_` in the package or component name.
 
 See [counter_test.rs](../../../integration/tests/counter_test.rs) lines 33-51 for a complete StorageMap example with `StorageSlotName`, `StorageSlot::with_map`, `AccountCreationConfig`, and `create_testing_account_from_package`.
 
-For a Value slot (single Word) instead of a StorageMap:
+For a single-value contract slot (paired with `StorageValue<T>` on-chain) instead of a map:
 ```rust
-let value_slot_name = StorageSlotName::new("miden::component::miden_bank_account::initialized").unwrap();
+let value_slot_name = StorageSlotName::new("miden_bank_account::bank_account::initialized").unwrap();
 let storage_slots = vec![StorageSlot::with_value(
     value_slot_name.clone(),
     Word::default(),
@@ -168,7 +168,7 @@ See [integration/Cargo.toml](../../../integration/Cargo.toml) for the current de
 ## Validation Checklist
 
 - [ ] Test function is `async` and uses `#[tokio::test]`
-- [ ] Storage slot names follow `miden::component::package_name::field_name` pattern
+- [ ] Storage slot names follow `package_or_name::component_struct::field_name` pattern
 - [ ] All contracts built before account/note creation
 - [ ] `apply_delta()` called after each `execute()`
 - [ ] `prove_next_block()` called after `add_pending_executed_transaction()`

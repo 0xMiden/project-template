@@ -10,7 +10,7 @@ description: Complete guide to writing Miden smart contracts with the Rust SDK. 
 ### Account Component (`#[component]`)
 Defines reusable logic and storage for accounts. Accounts are composed of one or more components.
 
-See [counter-account/src/lib.rs](../../../contracts/counter-account/src/lib.rs) for a working example demonstrating `#[component]`, `StorageMap`, read/write methods, and felt arithmetic.
+See [counter-account/src/lib.rs](../../../contracts/counter-account/src/lib.rs) for a working example demonstrating `#[component]`, typed `StorageMap<Word, Felt>`, `get()`/`set()`, and felt arithmetic.
 
 **Cargo.toml for accounts:** See [counter-account/Cargo.toml](../../../contracts/counter-account/Cargo.toml) for the required `crate-type`, `miden` dependency, `component` metadata, and `project-kind`.
 
@@ -42,8 +42,8 @@ fn run(_arg: Word, account: &mut Account) {
 
 | Type | Usage | Read | Write |
 |------|-------|------|-------|
-| `Value` | Single Word slot (flags, simple state) | `.read() -> Word` | `.write(Word)` |
-| `StorageMap` | Key-value mapping (balances, records) | `.get(&Word) -> Felt` | `.set(Word, Felt)` |
+| `StorageValue<T>` | Single typed slot (flags, counters, IDs) | `.get() -> T` | `.set(T) -> T` |
+| `StorageMap<K, V>` | Typed key-value mapping (balances, records) | `.get(K) -> V` | `.set(K, V) -> V` |
 
 **Storage keys** are always `Word` (4 Felts). Use `Word::from_u64_unchecked(a, b, c, d)` or `Word::from([f0, f1, f2, f3])`.
 
@@ -54,6 +54,7 @@ fn run(_arg: Word, account: &mut Account) {
 | `native_account::` | `add_asset(Asset)`, `remove_asset(Asset)`, `incr_nonce()` | Modify account vault/nonce |
 | `active_account::` | `get_id() -> AccountId`, `get_balance(AccountId) -> Felt` | Query current account |
 | `active_note::` | `get_storage() -> Vec<Felt>`, `get_assets() -> Vec<Asset>`, `get_sender() -> AccountId` | Query note being consumed |
+| `note::` | `build_recipient(Word, Word, Vec<Felt>) -> Recipient` | Build note recipients from serial number, script root, and note storage |
 | `output_note::` | `create(Tag, NoteType, Recipient) -> NoteIdx`, `add_asset(Asset, NoteIdx)` | Create output notes |
 | `faucet::` | `create_fungible_asset(Felt) -> Asset`, `mint(Asset)`, `burn(Asset)` | Asset minting |
 | `tx::` | `get_block_number() -> Felt`, `get_block_timestamp() -> Felt` | Transaction context |
@@ -61,15 +62,27 @@ fn run(_arg: Word, account: &mut Account) {
 
 ## Asset Handling
 
-Fungible asset Word layout: `[amount, 0, faucet_suffix, faucet_prefix]`
+`Asset` is now a two-word value:
 
 **Constructor**: `Asset::new(word)` creates an Asset from a Word.
 
 See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for complete asset handling patterns including deposit, withdrawal, and balance tracking.
 
 ```rust
-// Access asset amount
-let amount = asset.inner[0];
+pub struct Asset {
+    pub key: Word,
+    pub value: Word,
+}
+```
+
+For fungible assets, the amount lives in `asset.value[0]`. The asset class / vault identity lives in `asset.key`.
+
+```rust
+// Access fungible amount
+let amount = asset.value[0];
+
+// Keep the asset key if you need to persist or compare the asset class
+let asset_key = asset.key;
 
 // Add asset to account vault (only from component methods, not note scripts — see pitfall P9)
 native_account::add_asset(asset);
@@ -95,15 +108,21 @@ Then import the bindings in your Rust code. See [increment-note/src/lib.rs](../.
 let f = felt!(42);                     // preferred for literals in contract code
 let f = Felt::new(42);                 // construct a Felt from a u64
 let f = Felt::from_u32(42);
-let f = Felt::from_u64_unchecked(42);  // when value is known < field modulus
+let f = Felt::from_canonical_checked(42).unwrap();
 
 // Word from Felts
 let w = Word::from([f0, f1, f2, f3]);
-let w = Word::from_u64_unchecked(0, 0, 0, 1);
 let w = Word::new([f0, f1, f2, f3]);
+let w = Word::from([0_u32, 0, 0, 1]);
+let w = Word::try_from([0_u64, 0, 0, 1]).unwrap();
+
+// Inspect a Word
+let limbs: [Felt; 4] = w.into_elements();
+let bytes: [u8; 32] = w.as_bytes();
+let hex = w.to_hex();
 
 // Felt to u64 (for comparisons and arithmetic safety)
-let n: u64 = f.as_u64();
+let n: u64 = f.as_canonical_u64();
 ```
 
 ## No-std Requirements
@@ -129,6 +148,7 @@ See [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/exa
 - [ ] `#![no_std]` and `#![feature(alloc_error_handler)]` at top of every contract
 - [ ] `crate-type = ["cdylib"]` in Cargo.toml
 - [ ] Correct `project-kind` in `[package.metadata.miden]`
+- [ ] Typed storage uses `StorageValue<T>` / `StorageMap<K, V>` with `get()` / `set()`
 - [ ] Cross-component deps in both `[package.metadata.miden.dependencies]` and `[package.metadata.component.target.dependencies]`
 - [ ] Felt arithmetic validated before subtraction (see rust-sdk-pitfalls skill)
-- [ ] Felt comparisons use `.as_u64()` (see rust-sdk-pitfalls skill)
+- [ ] Felt comparisons use `.as_canonical_u64()` (see rust-sdk-pitfalls skill)
