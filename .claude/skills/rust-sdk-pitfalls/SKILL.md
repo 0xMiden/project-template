@@ -1,6 +1,6 @@
 ---
 name: rust-sdk-pitfalls
-description: Critical pitfalls and safety rules for Miden Rust SDK development. Covers felt arithmetic security, comparison operators, argument limits, storage naming, no-std setup, asset layout, P2ID roots, NoteType construction, note-to-component call boundaries, and note input immutability. Use when reviewing, debugging, or writing Miden contract code.
+description: Critical pitfalls and safety rules for Miden Rust SDK development. Covers felt arithmetic security, comparison operators, argument limits, storage naming, no-std setup, asset layout, and P2ID roots. Use when reviewing, debugging, or writing Miden contract code.
 ---
 
 # Miden SDK Pitfalls
@@ -26,8 +26,6 @@ let new_balance = current_balance - withdraw_amount;
 
 **Rule**: ALWAYS check `.as_canonical_u64()` values before any Felt subtraction.
 
-**Max Felt value**: The maximum valid Felt is `p - 1 = 18446744069414584320`, not `u64::MAX` (`18446744073709551615`). Using `u64::MAX` as a sentinel or boundary value causes silent wraparound.
-
 ## P2: Felt Comparison Operators Are Misleading for Quantity Logic
 
 **Severity**: High — silently produces incorrect results
@@ -40,6 +38,7 @@ if balance > threshold { ... }
 
 // CORRECT for business logic — compare as integers
 if balance.as_canonical_u64() > threshold.as_canonical_u64() { ... }
+- [ ] `Recipient::compute(...)` replaced with `note::build_recipient(...)`
 ```
 
 **Rule**: For quantity/business logic, ALWAYS convert to `.as_canonical_u64()` before using comparison operators.
@@ -152,6 +151,8 @@ let recipient = note::build_recipient(
 );
 ```
 
+`active_note::get_inputs()` also became `active_note::get_storage()`.
+
 ## P9: P2ID Note Root Hardcoding
 
 **Severity**: Low-Medium — breaks after miden-standards updates
@@ -178,32 +179,16 @@ fn p2id_note_root() -> Digest {
 
 **Mitigation**: Use `P2idNote::script_root()` from miden-standards if available, or verify the hardcoded root matches the current version after dependency updates.
 
-**NoteType for P2ID**: P2ID output notes created in contract code should use the private note type value via `NoteType::from(felt!(2))` (see P10). Using the public note type triggers an opaque "missing details in advice provider" error at execution time. See [miden-bank withdraw](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for the working pattern.
+## Quick Reference
 
-## P10: NoteType Variants Unavailable in Compiler SDK
-
-**Severity**: Medium -- causes compilation errors
-
-Named enum variants (`NoteType::Private`, `NoteType::Public`, `NoteType::Encrypted`) don't exist in contract code. Construct via `NoteType::from()`:
-
-| NoteType | Value |
-|----------|-------|
-| Public | `NoteType::from(felt!(1))` |
-| Private | `NoteType::from(felt!(2))` |
-| Encrypted | `NoteType::from(felt!(3))` |
-
-See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for `NoteType::from(note_type)` usage.
-
-## P11: Note Scripts Cannot Call Native Account Functions
-
-**Severity**: High -- causes runtime failures
-
-Note scripts cannot call `native_account::add_asset()` or other `native_account::` functions directly. The kernel's `authenticate_account_origin` check rejects these calls from a note context. Instead, note scripts must call an account component method, which then calls `native_account::add_asset()` internally.
-
-See [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) for the correct pattern: the note script calls `bank_account::deposit()`, which internally calls `native_account::add_asset()`.
-
-## P12: Note Inputs Are Immutable After Creation
-
-**Severity**: Low -- causes incorrect architecture
-
-Note inputs (`active_note::get_storage()`) are baked at note creation time and cannot be modified after creation. Design note input layouts carefully before deployment.
+| Pitfall | One-Line Rule |
+|---------|--------------|
+| P1 Felt arithmetic | Always `.as_canonical_u64()` before subtraction |
+| P2 Felt comparison | Always `.as_canonical_u64()` for `<` `>` `<=` `>=` in business logic |
+| P3 Arg limit | Max 4 Words per function — pass by reference |
+| P4 Storage API | Use `StorageValue<T>` / `StorageMap<K, V>` with `WordValue` / `WordKey` |
+| P5 Storage names | `package_or_name::component_struct::field` |
+| P6 No-std | `#![no_std]` + `#![feature(alloc_error_handler)]` |
+| P7 Asset ABI | Use `asset.key` + `asset.value`, not `asset.inner` |
+| P8 Recipient builder | Use `note::build_recipient(...)` |
+| P9 P2ID root | Verify digest after dependency updates |

@@ -1,6 +1,6 @@
 ---
 name: rust-sdk-patterns
-description: Complete guide to writing Miden smart contracts with the Rust SDK. Covers #[component], #[note], #[tx_script] macros, storage patterns, native functions, asset handling, cross-component calls, P2ID note creation, and asset receiving via component methods. Use when writing, editing, or reviewing Miden Rust contract code.
+description: Complete guide to writing Miden smart contracts with the Rust SDK. Covers #[component], #[note], #[tx_script] macros, storage patterns, native functions, asset handling, cross-component calls, and P2ID note creation. Use when writing, editing, or reviewing Miden Rust contract code.
 ---
 
 # Miden Rust SDK Patterns
@@ -45,6 +45,8 @@ fn run(_arg: Word, account: &mut Account) {
 | `StorageValue<T>` | Single typed slot (flags, counters, IDs) | `.get() -> T` | `.set(T) -> T` |
 | `StorageMap<K, V>` | Typed key-value mapping (balances, records) | `.get(K) -> V` | `.set(K, V) -> V` |
 
+**Storage keys** are always `Word` (4 Felts). Use `Word::from_u64_unchecked(a, b, c, d)` or `Word::from([f0, f1, f2, f3])`.
+
 ## Native Function Modules
 
 | Module | Key Functions | Purpose |
@@ -62,10 +64,6 @@ fn run(_arg: Word, account: &mut Account) {
 
 `Asset` is now a two-word value:
 
-**Constructor**: `Asset::new(word)` creates an Asset from a Word.
-
-See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for complete asset handling patterns including deposit, withdrawal, and balance tracking.
-
 ```rust
 pub struct Asset {
     pub key: Word,
@@ -82,7 +80,7 @@ let amount = asset.value[0];
 // Keep the asset key if you need to persist or compare the asset class
 let asset_key = asset.key;
 
-// Add asset to account vault (only from component methods, not note scripts — see pitfall P11)
+// Add asset to account vault
 native_account::add_asset(asset);
 
 // Remove asset from account vault
@@ -91,7 +89,43 @@ native_account::remove_asset(asset.clone());
 
 ## P2ID Output Note Creation
 
-To send assets to another account, create a P2ID (Pay-to-ID) output note. See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) `create_p2id_note()` for a complete working implementation.
+To send assets to another account, create a P2ID (Pay-to-ID) output note:
+
+```rust
+fn create_p2id_note(&mut self, serial_num: Word, asset: &Asset,
+                     recipient_id: AccountId, tag: Felt, note_type: Felt) {
+    let tag = Tag::from(tag);
+    let note_type = NoteType::from(note_type);
+    let script_root = Self::p2id_note_root(); // Hardcoded P2ID script digest
+
+    // P2ID note storage: [recipient_suffix, recipient_prefix]
+    let recipient = note::build_recipient(
+        serial_num,
+        script_root,
+        vec![recipient_id.suffix, recipient_id.prefix],
+    );
+
+    let note_idx = output_note::create(tag, note_type, recipient);
+    let _remaining_value = native_account::remove_asset(asset);
+    output_note::add_asset(asset, note_idx);
+}
+```
+
+`Recipient::compute(...)` was removed in `miden` 0.11. Use `note::build_recipient(...)` instead.
+
+## Note Storage And Attached Assets
+
+Notes receive explicit storage data as `Vec<Felt>`, accessed with `active_note::get_storage()`. Attached assets are separate and should be read with `active_note::get_assets()`.
+
+```rust
+let storage = active_note::get_storage();
+let serial_num = Word::from([storage[0], storage[1], storage[2], storage[3]]);
+let tag = Tag::from(storage[4]);
+let note_type = NoteType::from(storage[5]);
+
+let assets = active_note::get_assets();
+let first_asset = assets[0];
+```
 
 ## Cross-Component Dependencies
 
@@ -103,8 +137,8 @@ Then import the bindings in your Rust code. See [increment-note/src/lib.rs](../.
 
 ```rust
 // Felt from integer
-let f = felt!(42);                     // preferred for literals in contract code
-let f = Felt::new(42);                 // construct a Felt from a u64
+let f = felt!(42);
+let f = Felt::new(42);
 let f = Felt::from_u32(42);
 let f = Felt::from_canonical_checked(42).unwrap();
 
@@ -132,14 +166,6 @@ If you need heap allocation (Vec, String, etc.):
 extern crate alloc;
 use alloc::vec::Vec;
 ```
-
-## Asset Receiving via Component Methods
-
-Note scripts cannot call `native_account::add_asset()` directly (see pitfall P11). The canonical pattern is for an account component to expose a public method that wraps `native_account::add_asset()`, and note scripts call that method via cross-component bindings.
-
-See [miden-bank bank-account deposit()](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for the component side: the `deposit()` method validates the deposit, updates storage, and calls `native_account::add_asset()`.
-
-See [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) for the note side: the note script calls `bank_account::deposit()` via generated bindings.
 
 ## Validation Checklist
 
