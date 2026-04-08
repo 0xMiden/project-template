@@ -6,16 +6,16 @@ use anyhow::{bail, Context, Result};
 use cargo_miden::{run, OutputType};
 use miden_client::{
     account::{
-        component::{AccountComponentMetadata, BasicWallet, NoAuth},
+        component::{AccountComponentMetadata, BasicWallet, InitStorageData, NoAuth},
         Account, AccountBuilder, AccountComponent, AccountId, AccountStorageMode, AccountType,
         StorageSlot,
     },
     auth::{AuthSchemeId, AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
-    crypto::FeltRng,
     keystore::{FilesystemKeyStore, Keystore},
     note::{Note, NoteMetadata, NoteRecipient, NoteScript, NoteStorage, NoteTag, NoteType},
     rpc::{Endpoint, GrpcClient},
+    testing::NoteBuilder,
     utils::Deserializable,
     Client, Felt, Word,
 };
@@ -285,19 +285,15 @@ pub fn create_note_from_package(
     sender_id: AccountId,
     config: NoteCreationConfig,
 ) -> Result<Note> {
-    let note_program = package.unwrap_program();
-    let note_script = NoteScript::from_parts(
-        note_program.mast_forest().clone(),
-        note_program.entrypoint(),
-    );
-
-    let serial_num = client.rng().draw_word();
-    let note_storage = NoteStorage::new(config.storage).context("Failed to create note storage")?;
-    let recipient = NoteRecipient::new(serial_num, note_script, note_storage);
-
-    let metadata = NoteMetadata::new(sender_id, config.note_type).with_tag(config.tag);
-
-    Ok(Note::new(config.assets, metadata, recipient))
+    NoteBuilder::new(sender_id, client.rng())
+        .package(Arc::unwrap_or_clone(package))
+        .note_type(config.note_type)
+        .tag(config.tag.into())
+        .add_assets(config.assets.iter().cloned())
+        .note_storage(config.storage)
+        .context("Failed to create note storage")?
+        .build()
+        .context("Failed to build note")
 }
 
 /// Creates a deterministic note from a compiled package for testing.
