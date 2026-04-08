@@ -6,16 +6,16 @@ use anyhow::{bail, Context, Result};
 use cargo_miden::{run, OutputType};
 use miden_client::{
     account::{
-        component::{AccountComponentMetadata, BasicWallet, NoAuth},
+        component::{AccountComponentMetadata, BasicWallet, InitStorageData, NoAuth},
         Account, AccountBuilder, AccountComponent, AccountId, AccountStorageMode, AccountType,
         StorageSlot, StorageSlotName,
     },
     auth::{AuthSchemeId, AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
-    crypto::FeltRng,
     keystore::{FilesystemKeyStore, Keystore},
     note::{Note, NoteMetadata, NoteRecipient, NoteScript, NoteStorage, NoteTag, NoteType},
     rpc::{Endpoint, GrpcClient},
+    testing::NoteBuilder,
     utils::Deserializable,
     Client, Felt, Word,
 };
