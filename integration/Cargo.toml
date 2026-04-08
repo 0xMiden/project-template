@@ -5,12 +5,8 @@ edition.workspace = true
 
 [dependencies]
 cargo-miden = { version = "0.8" }
-
-# TODO: switch to the v0.14 release
-# miden-client = { version = "0.14", features = ["tonic", "testing"] }
-# miden-client-sqlite-store = { version = "0.14", package = "miden-client-sqlite-store" }
-miden-client = { git = "https://github.com/0xMiden/miden-client", ref = "9aa6d0c0d23ebe0fb1c4d2df7a0d085a802d81bb", features = ["tonic"] }
-miden-client-sqlite-store = { git = "https://github.com/0xMiden/miden-client", ref = "9aa6d0c0d23ebe0fb1c4d2df7a0d085a802d81bb", package = "miden-client-sqlite-store"}
+miden-client = { version = "0.14", features = ["tonic"] }
+miden-client-sqlite-store = { version = "0.14", package = "miden-client-sqlite-store" }
 miden-testing = "0.14"
 miden-mast-package = { version = "0.22", default-features = false }
 tokio = { version = "1.48", features = ["rt-multi-thread", "net", "macros", "fs"] }
