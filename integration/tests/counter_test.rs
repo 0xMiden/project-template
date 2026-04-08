@@ -1,16 +1,19 @@
+use anyhow::Context;
 use integration::helpers::{
     build_project_in_dir, create_testing_account_from_package, create_testing_note_from_package,
     AccountCreationConfig, NoteCreationConfig,
 };
 
 use miden_client::{
-    account::{StorageMap, StorageMapKey, StorageSlot, StorageSlotName},
+    account::{
+        component::InitStorageData, StorageMap, StorageMapKey, StorageSlot, StorageSlotName,
+    },
     auth::AuthSchemeId,
     transaction::RawOutputNote,
     Felt, Word,
 };
 use miden_testing::{Auth, MockChain};
-use std::{path::Path, sync::Arc};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 use anyhow::Context;
 use integration::helpers::{build_project_in_dir, counter_storage_slot, COUNTER_STORAGE_KEY};
