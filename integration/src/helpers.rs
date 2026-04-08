@@ -226,8 +226,9 @@ pub async fn create_account_from_package(
 pub async fn create_testing_account_from_package(
     package: Arc<Package>,
     config: AccountCreationConfig,
+    initial_storage_data: InitStorageData,
 ) -> Result<Account> {
-    let account_component = account_component_from_package(package, &config)
+    let account_component = AccountComponent::from_package(&package, &initial_storage_data)
         .context("Failed to create account component from package")?;
 
     let account = AccountBuilder::new([3u8; 32])
