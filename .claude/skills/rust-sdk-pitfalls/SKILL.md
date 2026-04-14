@@ -40,7 +40,6 @@ if balance > threshold { ... }
 
 // CORRECT for business logic — compare as integers
 if balance.as_canonical_u64() > threshold.as_canonical_u64() { ... }
-- [ ] `Recipient::compute(...)` replaced with `note::build_recipient(...)`
 ```
 
 **Rule**: For quantity/business logic, ALWAYS convert to `.as_canonical_u64()` before using comparison operators.

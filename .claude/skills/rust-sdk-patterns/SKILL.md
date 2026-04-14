@@ -45,8 +45,6 @@ fn run(_arg: Word, account: &mut Account) {
 | `StorageValue<T>` | Single typed slot (flags, counters, IDs) | `.get() -> T` | `.set(T) -> T` |
 | `StorageMap<K, V>` | Typed key-value mapping (balances, records) | `.get(K) -> V` | `.set(K, V) -> V` |
 
-**Storage keys** are always `Word` (4 Felts). Use `Word::from_u64_unchecked(a, b, c, d)` or `Word::from([f0, f1, f2, f3])`.
-
 ## Native Function Modules
 
 | Module | Key Functions | Purpose |
