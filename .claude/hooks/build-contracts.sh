@@ -21,7 +21,7 @@ fi
 # Detect which build tool is available (midenup installs `miden`, cargo install provides `cargo-miden`)
 if command -v miden &> /dev/null; then
   BUILD_CMD="miden build"
-elif cargo miden --version &> /dev/null 2>&1; then
+elif cargo miden --version &> /dev/null; then
   BUILD_CMD="cargo miden build"
 else
   echo '{"hookSpecificOutput": {"additionalContext": "Contract build skipped: neither '\''miden'\'' nor '\''cargo-miden'\'' found. Install via midenup or: cargo install cargo-miden"}}'
