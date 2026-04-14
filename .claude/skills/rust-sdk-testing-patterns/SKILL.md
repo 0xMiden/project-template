@@ -136,9 +136,9 @@ let executed = tx_context.execute().await?;
 
 For contracts requiring initialization before use, each step needs its own execute → `apply_delta()` → `add_pending_executed_transaction()` → `prove_next_block()` cycle.
 
-See [miden-bank withdraw_test.rs](../../../../miden-bank/integration/tests/withdraw_test.rs) for a complete multi-transaction test demonstrating: initialize bank → deposit assets → withdraw assets (3 sequential transactions with state verification between each step).
+See [miden-bank withdraw_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/withdraw_test.rs) for a complete multi-transaction test demonstrating: initialize bank → deposit assets → withdraw assets (3 sequential transactions with state verification between each step).
 
-See [miden-bank deposit_test.rs](../../../../miden-bank/integration/tests/deposit_test.rs) for asset-bearing note construction using `NoteAssets::new()` with `FungibleAsset`.
+See [miden-bank deposit_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/deposit_test.rs) for asset-bearing note construction using `NoteAssets::new()` with `FungibleAsset`.
 
 ## MockChain Block Numbering
 
@@ -159,7 +159,7 @@ To create a note that carries fungible assets in tests:
 
 The faucet must be set up first (see Step 3) and the sender wallet must hold sufficient assets (see Step 2).
 
-See [miden-bank deposit_test.rs](../../../../miden-bank/integration/tests/deposit_test.rs) lines 56-70 for the complete working pattern, including `FungibleAsset::new()`, `NoteAssets::new()`, and `NoteCreationConfig` usage.
+See [miden-bank deposit_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/deposit_test.rs) lines 56-70 for the complete working pattern, including `FungibleAsset::new()`, `NoteAssets::new()`, and `NoteCreationConfig` usage.
 
 ## Key Dependencies
 

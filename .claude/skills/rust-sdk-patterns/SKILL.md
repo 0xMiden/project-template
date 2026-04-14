@@ -53,7 +53,7 @@ fn run(_arg: Word, account: &mut Account) {
 |--------|--------------|---------|
 | `native_account::` | `add_asset(Asset)`, `remove_asset(Asset)`, `incr_nonce()` | Modify account vault/nonce |
 | `active_account::` | `get_id() -> AccountId`, `get_balance(AccountId) -> Felt` | Query current account |
-| `active_note::` | `get_inputs() -> Vec<Felt>`, `get_assets() -> Vec<Asset>`, `get_sender() -> AccountId` | Query note being consumed |
+| `active_note::` | `get_storage() -> Vec<Felt>`, `get_assets() -> Vec<Asset>`, `get_sender() -> AccountId` | Query note being consumed |
 | `output_note::` | `create(Tag, NoteType, Recipient) -> NoteIdx`, `add_asset(Asset, NoteIdx)` | Create output notes |
 | `faucet::` | `create_fungible_asset(Felt) -> Asset`, `mint(Asset)`, `burn(Asset)` | Asset minting |
 | `tx::` | `get_block_number() -> Felt`, `get_block_timestamp() -> Felt` | Transaction context |
@@ -65,13 +65,13 @@ Fungible asset Word layout: `[amount, 0, faucet_suffix, faucet_prefix]`
 
 **Constructor**: `Asset::new(word)` creates an Asset from a Word.
 
-See [miden-bank bank-account](../../../../miden-bank/contracts/bank-account/src/lib.rs) for complete asset handling patterns including deposit, withdrawal, and balance tracking.
+See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for complete asset handling patterns including deposit, withdrawal, and balance tracking.
 
 ```rust
 // Access asset amount
 let amount = asset.inner[0];
 
-// Add asset to account vault (only from component methods, not note scripts — see pitfall P13)
+// Add asset to account vault (only from component methods, not note scripts — see pitfall P9)
 native_account::add_asset(asset);
 
 // Remove asset from account vault
@@ -80,29 +80,7 @@ native_account::remove_asset(asset.clone());
 
 ## P2ID Output Note Creation
 
-To send assets to another account, create a P2ID (Pay-to-ID) output note. See [miden-bank bank-account](../../../../miden-bank/contracts/bank-account/src/lib.rs) `create_p2id_note()` for a complete working implementation.
-
-**Key details:**
-
-- `Recipient::compute(serial_num: Word, script_digest: Digest, inputs: Vec<Felt>)` — the second parameter is `Digest`, not `Word`.
-- `Digest` does not implement `Copy`. Use `.clone()` when reusing a digest in loops or across calls.
-- P2ID inputs must be padded to 8 elements: `[suffix, prefix, 0, 0, 0, 0, 0, 0]`.
-- In host/test code, use `NoteRecipient` (from miden-client) instead of `Recipient` for constructing notes.
-
-## Note Inputs
-
-Notes receive data via inputs (Vec<Felt>), accessed with `active_note::get_inputs()`.
-
-**Requires alloc**: Since `get_inputs()` returns `Vec<Felt>`, you must have `extern crate alloc;` and `use alloc::vec::Vec;` in your `#![no_std]` contract. See the [no-std setup in any contract](../../../contracts/counter-account/src/lib.rs).
-
-**Usage:**
-
-```rust
-let inputs = active_note::get_inputs();
-// Parse: Asset = inputs[0..4], serial_num = inputs[4..8], tag = inputs[8], type = inputs[9]
-let asset = Asset::new(Word::from([inputs[0], inputs[1], inputs[2], inputs[3]]));
-let serial_num = Word::from([inputs[4], inputs[5], inputs[6], inputs[7]]);
-```
+To send assets to another account, create a P2ID (Pay-to-ID) output note. See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) `create_p2id_note()` for a complete working implementation.
 
 ## Cross-Component Dependencies
 
@@ -115,7 +93,7 @@ Then import the bindings in your Rust code. See [increment-note/src/lib.rs](../.
 ```rust
 // Felt from integer
 let f = felt!(42);                     // preferred for literals in contract code
-let f = Felt::new(42);                 // returns Result in contracts, Felt in host code (see pitfall P8)
+let f = Felt::new(42);                 // construct a Felt from a u64
 let f = Felt::from_u32(42);
 let f = Felt::from_u64_unchecked(42);  // when value is known < field modulus
 
@@ -140,11 +118,11 @@ use alloc::vec::Vec;
 
 ## Asset Receiving via Component Methods
 
-Note scripts cannot call `native_account::add_asset()` directly (see pitfall P13). The canonical pattern is for an account component to expose a public method that wraps `native_account::add_asset()`, and note scripts call that method via cross-component bindings.
+Note scripts cannot call `native_account::add_asset()` directly (see pitfall P9). The canonical pattern is for an account component to expose a public method that wraps `native_account::add_asset()`, and note scripts call that method via cross-component bindings.
 
-See [miden-bank bank-account deposit()](../../../../miden-bank/contracts/bank-account/src/lib.rs) for the component side: the `deposit()` method validates the deposit, updates storage, and calls `native_account::add_asset()`.
+See [miden-bank bank-account deposit()](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for the component side: the `deposit()` method validates the deposit, updates storage, and calls `native_account::add_asset()`.
 
-See [miden-bank deposit-note](../../../../miden-bank/contracts/deposit-note/src/lib.rs) for the note side: the note script calls `bank_account::deposit()` via generated bindings.
+See [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) for the note side: the note script calls `bank_account::deposit()` via generated bindings.
 
 ## Validation Checklist
 

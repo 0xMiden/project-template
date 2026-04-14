@@ -1,6 +1,6 @@
 ---
 name: rust-sdk-pitfalls
-description: Critical pitfalls and safety rules for Miden Rust SDK development. Covers felt arithmetic security, comparison operators, argument limits, storage naming, no-std setup, asset layout, P2ID roots, Felt::new() Result type, Value read annotations, NoteType construction, AccountId.prefix() types, Felt conversion limits, note-to-component call boundaries, and note input immutability. Use when reviewing, debugging, or writing Miden contract code.
+description: Critical pitfalls and safety rules for Miden Rust SDK development. Covers felt arithmetic security, comparison operators, argument limits, storage naming, no-std setup, asset layout, P2ID roots, NoteType construction, note-to-component call boundaries, and note input immutability. Use when reviewing, debugging, or writing Miden contract code.
 ---
 
 # Miden SDK Pitfalls
@@ -133,25 +133,9 @@ fn p2id_note_root() -> Digest {
 
 **Mitigation**: Use `P2idNote::script_root()` from miden-standards if available, or verify the hardcoded root matches the current version after dependency updates.
 
-**NoteType for P2ID**: P2ID output notes created in contract code should use `NoteType::Private` (value 2, see P10). Using `NoteType::Public` triggers an opaque "missing details in advice provider" error at execution time. See [miden-bank withdraw](../../../../miden-bank/contracts/bank-account/src/lib.rs) for the working pattern.
+**NoteType for P2ID**: P2ID output notes created in contract code should use the private note type value via `NoteType::from(felt!(2))` (see P8). Using the public note type triggers an opaque "missing details in advice provider" error at execution time. See [miden-bank withdraw](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for the working pattern.
 
-## P8: Felt::new() Returns Result in Contract Code
-
-**Severity**: Medium -- causes compilation errors
-
-In contract code (compiler SDK), `Felt::new(x)` returns `Result<Felt, FeltError>`, not `Felt` directly. In host/test code (miden-base/miden-client), `Felt::new(x)` returns `Felt` directly.
-
-**Preferred alternatives in contract code**: Use `felt!(x)` for literals, or `Felt::from_u64_unchecked(x)` when the value is known to be less than the field modulus. See [miden-bank bank-account](../../../../miden-bank/contracts/bank-account/src/lib.rs) for `felt!()` usage throughout.
-
-## P9: Value Storage Read Requires Type Annotation
-
-**Severity**: Medium -- causes compilation errors
-
-`Value::read()` is generic over `V: From<Word>`, so an explicit type annotation is mandatory. Omitting it causes a type inference error.
-
-See [miden-bank bank-account](../../../../miden-bank/contracts/bank-account/src/lib.rs) for the pattern: `let current: Word = self.initialized.read()`.
-
-## P10: NoteType Variants Unavailable in Compiler SDK
+## P8: NoteType Variants Unavailable in Compiler SDK
 
 **Severity**: Medium -- causes compilation errors
 
@@ -163,37 +147,21 @@ Named enum variants (`NoteType::Private`, `NoteType::Public`, `NoteType::Encrypt
 | Private | `NoteType::from(felt!(2))` |
 | Encrypted | `NoteType::from(felt!(3))` |
 
-See [miden-bank bank-account](../../../../miden-bank/contracts/bank-account/src/lib.rs) for `NoteType::from(note_type)` usage.
+See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for `NoteType::from(note_type)` usage.
 
-## P11: AccountId.prefix() Returns AccountIdPrefix
-
-**Severity**: Low-Medium -- causes type mismatch errors
-
-`AccountId.prefix()` returns `AccountIdPrefix`, not `Felt`. Use `.as_felt()` or `.into()` to convert when a `Felt` is needed:
-
-```rust
-let prefix_felt: Felt = account_id.prefix().as_felt();
-```
-
-## P12: Felt Conversion Limitations in Contract Code
-
-**Severity**: Medium -- causes compilation errors
-
-In contract code (compiler SDK), only `as_u64()` exists for converting Felt to integer. `as_int()` is available in host/test code only. `as_u32()` does not exist. For construction, `Felt::from_u32()` is available.
-
-## P13: Note Scripts Cannot Call Native Account Functions
+## P9: Note Scripts Cannot Call Native Account Functions
 
 **Severity**: High -- causes runtime failures
 
 Note scripts cannot call `native_account::add_asset()` or other `native_account::` functions directly. The kernel's `authenticate_account_origin` check rejects these calls from a note context. Instead, note scripts must call an account component method, which then calls `native_account::add_asset()` internally.
 
-See [miden-bank deposit-note](../../../../miden-bank/contracts/deposit-note/src/lib.rs) for the correct pattern: the note script calls `bank_account::deposit()`, which internally calls `native_account::add_asset()`.
+See [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) for the correct pattern: the note script calls `bank_account::deposit()`, which internally calls `native_account::add_asset()`.
 
-## P14: Note Inputs Are Immutable After Creation
+## P10: Note Inputs Are Immutable After Creation
 
 **Severity**: Low -- causes incorrect architecture
 
-Note inputs (`active_note::get_inputs()`) are baked at note creation time and cannot be modified after creation. Design note input layouts carefully before deployment.
+Note inputs (`active_note::get_storage()`) are baked at note creation time and cannot be modified after creation. Design note input layouts carefully before deployment.
 
 ## Quick Reference
 
@@ -205,11 +173,7 @@ Note inputs (`active_note::get_inputs()`) are baked at note creation time and ca
 | P4 Storage names | `miden::component::pkg_name::field` (underscores) |
 | P5 No-std | `#![no_std]` + `#![feature(alloc_error_handler)]` |
 | P6 Asset layout | `[amount, 0, suffix, prefix]` |
-| P7 P2ID root | Verify digest after dependency updates; use Private NoteType |
-| P8 Felt::new() | Returns `Result` in contracts — use `felt!()` or `from_u64_unchecked()` |
-| P9 Value read | Explicit type annotation required: `let w: Word = val.read()` |
-| P10 NoteType | No named variants in contracts — use `NoteType::from(felt!(n))` |
-| P11 AccountId.prefix() | Returns `AccountIdPrefix`, not `Felt` — use `.as_felt()` |
-| P12 Felt conversions | Only `as_u64()` in contracts; no `as_int()` / `as_u32()` |
-| P13 Note ↛ native_account | Note scripts must call component methods, not `native_account::` |
-| P14 Note inputs | Immutable after creation — design layouts upfront |
+| P7 P2ID root | Verify digest after dependency updates; use `NoteType::from(felt!(2))` for private |
+| P8 NoteType | No named variants in contracts — use `NoteType::from(felt!(n))` |
+| P9 Note ↛ native_account | Note scripts must call component methods, not `native_account::` |
+| P10 Note inputs | Immutable after creation — design layouts upfront |
