@@ -153,8 +153,6 @@ let recipient = note::build_recipient(
 );
 ```
 
-`active_note::get_inputs()` also became `active_note::get_storage()`.
-
 ## P9: P2ID Note Root Hardcoding
 
 **Severity**: Low-Medium — breaks after miden-standards updates

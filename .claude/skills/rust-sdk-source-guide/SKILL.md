@@ -29,7 +29,6 @@ This is the single highest-leverage practice for AI-assisted Miden development.
    - `Recipient::compute(...)` -> `note::build_recipient(...)`
    - `Value` -> `StorageValue<T>`
    - `StorageMap` -> `StorageMap<K, V>`
-   - `active_note::get_inputs()` -> `active_note::get_storage()`
 3. Search the source repos for a working example of the pattern that failed
 4. Adapt the working pattern to your use case
 5. Rebuild
@@ -163,7 +162,8 @@ Accounts can include standard components (BasicWallet, authentication) alongside
 Create output notes (like P2ID) from within contract code. Requires building a recipient with `note::build_recipient(serial_num, script_root, storage)` and then using `output_note::create(...)`. The `miden-bank/` withdraw pattern demonstrates this end-to-end.
 
 ### Note Storage Protocol
-Pass structured data to notes via `Vec<Felt>` storage. Define your storage layout, document the field ordering, and parse it with `active_note::get_storage()` in the `#[note_script]` function. Attached assets are separate and should be read with `active_note::get_assets()`.
+Notes receive storage data as `Vec<Felt>` which is deserialized into the note object. In the `#[note_script]` method the `self` is deserialized from the note storage (`active_note::get_storage()`).
+Attached assets are separate and should be read with `active_note::get_assets()`.
 
 ### Atomic Swaps
 The standard SwapNote in `miden-base/` creates a payback P2ID note automatically when consumed. Explore the SwapNote builder to understand tag construction, storage layout, and the payback mechanism.
