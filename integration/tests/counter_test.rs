@@ -1,29 +1,19 @@
 use std::{path::Path, sync::Arc};
 
 use anyhow::Context;
-use integration::helpers::build_project_in_dir;
+use integration::helpers::{build_project_in_dir, counter_storage_slot, COUNTER_STORAGE_KEY};
 use miden_client::{
     account::{
         component::InitStorageData, AccountBuilder, AccountComponent, AccountStorageMode,
-        AccountType, StorageSlotName,
+        AccountType,
     },
     auth::AuthSchemeId,
     crypto::RandomCoin,
     note::NoteScript,
     transaction::RawOutputNote,
-    Felt, Word,
 };
 use miden_standards::testing::note::NoteBuilder;
 use miden_testing::{AccountState, Auth, MockChain};
-
-/// The fixed key used by the counter contract to store the counter value.
-const COUNTER_STORAGE_KEY: Word = Word::new([Felt::ZERO, Felt::ZERO, Felt::ZERO, Felt::ONE]);
-
-/// Returns the storage slot name used by the counter account component.
-fn counter_storage_slot() -> anyhow::Result<StorageSlotName> {
-    StorageSlotName::new("miden_counter_account::counter_contract::count_map")
-        .context("invalid counter storage slot name")
-}
 
 #[tokio::test]
 async fn counter_test() -> anyhow::Result<()> {

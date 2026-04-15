@@ -1,14 +1,11 @@
 use integration::helpers::{
-    build_project_in_dir, create_account_from_package, create_basic_wallet_account, setup_client,
-    AccountCreationConfig, ClientSetup,
+    build_project_in_dir, counter_storage_slot, create_account_from_package,
+    create_basic_wallet_account, setup_client, AccountCreationConfig, ClientSetup,
+    COUNTER_STORAGE_KEY,
 };
 
 use anyhow::{Context, Result};
-use miden_client::{
-    account::{StorageMap, StorageMapKey, StorageSlot, StorageSlotName},
-    transaction::TransactionRequestBuilder,
-    Felt, Word,
-};
+use miden_client::{account::component::InitStorageData, transaction::TransactionRequestBuilder};
 use miden_standards::testing::note::NoteBuilder;
 use std::{path::Path, sync::Arc};
 
@@ -33,19 +30,14 @@ async fn main() -> Result<()> {
             .context("Failed to build increment note contract")?,
     );
 
-    // Create the counter account with initial storage and no-auth auth component
-    let count_storage_key = Word::from([Felt::new(0), Felt::new(0), Felt::new(0), Felt::new(1)]);
-    let initial_count = Word::from([Felt::new(0), Felt::new(0), Felt::new(0), Felt::new(0)]);
-    // The slot name is constructed as
-    // `miden::component::[to_underscore(Cargo.toml:package.metadata.component.package)]::[field_name]`
-    let counter_storage_slot =
-        StorageSlotName::new("miden::component::miden_counter_account::count_map").unwrap();
-    let storage_slots = vec![StorageSlot::with_map(
-        counter_storage_slot.clone(),
-        StorageMap::with_entries([(StorageMapKey::new(count_storage_key), initial_count)]).unwrap(),
-    )];
+    // Create the counter account with initial component storage.
+    let counter_storage_slot = counter_storage_slot()?;
+    let mut init_storage_data = InitStorageData::default();
+    init_storage_data
+        .insert_map_entry(counter_storage_slot, COUNTER_STORAGE_KEY, 0_u64)
+        .context("Failed to seed counter storage")?;
     let counter_cfg = AccountCreationConfig {
-        storage_slots,
+        init_storage_data,
         ..Default::default()
     };
 

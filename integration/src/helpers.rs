@@ -1,23 +1,24 @@
 //! Common helper functions for scripts and tests
 
-use std::{borrow::Borrow, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use cargo_miden::{run, OutputType};
 use miden_client::{
     account::{
-        component::{AccountComponentMetadata, BasicWallet, NoAuth},
-        Account, AccountBuilder, AccountComponent, AccountStorageMode, AccountType, StorageSlot,
+        component::{BasicWallet, InitStorageData, NoAuth},
+        Account, AccountBuilder, AccountComponent, AccountStorageMode, AccountType,
+        StorageSlotName,
     },
     auth::{AuthSchemeId, AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
     keystore::{FilesystemKeyStore, Keystore},
     rpc::{Endpoint, GrpcClient},
     utils::Deserializable,
-    Client,
+    Client, Felt, Word,
 };
 use miden_client_sqlite_store::ClientBuilderSqliteExt;
-use miden_mast_package::{Package, SectionId};
+use miden_mast_package::Package;
 use rand::RngCore;
 
 /// Test setup configuration containing initialized client and keystore
@@ -107,15 +108,26 @@ pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
     Package::read_from_bytes(&package_bytes).context("Failed to deserialize package from bytes")
 }
 
+/// The fixed key used by the counter contract to store the counter value.
+pub const COUNTER_STORAGE_KEY: Word = Word::new([Felt::ZERO, Felt::ZERO, Felt::ZERO, Felt::ONE]);
+
+/// Returns the storage slot name used by the counter account component.
+///
+/// # Errors
+/// Returns an error if the fixed storage slot name is invalid.
+pub fn counter_storage_slot() -> Result<StorageSlotName> {
+    StorageSlotName::new("miden_counter_account::counter_contract::count_map")
+        .context("invalid counter storage slot name")
+}
+
 /// Configuration for creating an account with a custom component
-#[derive(Clone)]
 pub struct AccountCreationConfig {
     /// The account type to create.
     pub account_type: AccountType,
     /// The account storage visibility mode.
     pub storage_mode: AccountStorageMode,
-    /// Initial storage slots to seed into the component.
-    pub storage_slots: Vec<StorageSlot>,
+    /// Initial component storage data keyed by storage slot schema.
+    pub init_storage_data: InitStorageData,
 }
 
 impl Default for AccountCreationConfig {
@@ -123,52 +135,9 @@ impl Default for AccountCreationConfig {
         Self {
             account_type: AccountType::RegularAccountImmutableCode,
             storage_mode: AccountStorageMode::Public,
-            storage_slots: vec![],
+            init_storage_data: InitStorageData::default(),
         }
     }
-}
-
-/// Creates an account component from a compiled package
-///
-/// # Arguments
-/// * `package` - The compiled package containing account component metadata
-/// * `config` - Configuration for account creation
-///
-/// # Returns
-/// An `AccountComponent` configured according to the provided config
-///
-/// # Errors
-/// Returns an error if the package doesn't contain account component metadata or deserialization fails
-pub fn account_component_from_package(
-    package: Arc<Package>,
-    config: &AccountCreationConfig,
-) -> Result<AccountComponent> {
-    // Find the account component metadata section in the package
-    let account_component_metadata = package.sections.iter().find_map(|s| {
-        if s.id == SectionId::ACCOUNT_COMPONENT_METADATA {
-            Some(s.data.borrow())
-        } else {
-            None
-        }
-    });
-
-    let account_component = match account_component_metadata {
-        None => bail!("Package missing account component metadata"),
-        Some(bytes) => {
-            let metadata = AccountComponentMetadata::read_from_bytes(bytes)
-                .context("Failed to deserialize account component metadata")?;
-
-            let component = AccountComponent::new(
-                package.mast.as_ref().clone(),
-                config.storage_slots.clone(),
-                metadata,
-            )
-            .context("Failed to create account component")?;
-            component
-        }
-    };
-
-    Ok(account_component)
 }
 
 /// Creates an account with a custom component from a compiled package
@@ -188,8 +157,9 @@ pub async fn create_account_from_package(
     package: Arc<Package>,
     config: AccountCreationConfig,
 ) -> Result<Account> {
-    let account_component = account_component_from_package(package, &config)
-        .context("Failed to create account component from package")?;
+    let account_component =
+        AccountComponent::from_package(package.as_ref(), &config.init_storage_data)
+            .context("Failed to create account component from package")?;
 
     let mut init_seed = [0_u8; 32];
     client.rng().fill_bytes(&mut init_seed);
