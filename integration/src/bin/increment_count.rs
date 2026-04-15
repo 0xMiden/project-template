@@ -1,6 +1,6 @@
 use integration::helpers::{
-    build_project_in_dir, create_account_from_package, create_basic_wallet_account,
-    create_note_from_package, setup_client, AccountCreationConfig, ClientSetup, NoteCreationConfig,
+    build_project_in_dir, create_account_from_package, create_basic_wallet_account, setup_client,
+    AccountCreationConfig, ClientSetup,
 };
 
 use anyhow::{Context, Result};
@@ -9,6 +9,7 @@ use miden_client::{
     transaction::TransactionRequestBuilder,
     Felt, Word,
 };
+use miden_standards::testing::note::NoteBuilder;
 use std::{path::Path, sync::Arc};
 
 #[tokio::main]
@@ -61,14 +62,12 @@ async fn main() -> Result<()> {
         .context("Failed to create sender wallet account")?;
     println!("Sender account ID: {:?}", sender_account.id().to_hex());
 
-    // build increment note
-    let counter_note = create_note_from_package(
-        &mut client,
-        note_package.clone(),
-        sender_account.id(),
-        NoteCreationConfig::default(),
-    )
-    .context("Failed to create counter note from package")?;
+    // Build the increment note directly from the compiled package.
+    let counter_note = NoteBuilder::new(sender_account.id(), client.rng())
+        .package((*note_package).clone())
+        .tag(0)
+        .build()
+        .context("Failed to create counter note from package")?;
     println!("Counter note hash: {:?}", counter_note.id().to_hex());
 
     // build and submit transaction to publish note

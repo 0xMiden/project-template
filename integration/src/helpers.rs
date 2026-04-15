@@ -7,17 +7,14 @@ use cargo_miden::{run, OutputType};
 use miden_client::{
     account::{
         component::{AccountComponentMetadata, BasicWallet, NoAuth},
-        Account, AccountBuilder, AccountComponent, AccountId, AccountStorageMode, AccountType,
-        StorageSlot,
+        Account, AccountBuilder, AccountComponent, AccountStorageMode, AccountType, StorageSlot,
     },
     auth::{AuthSchemeId, AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
-    crypto::FeltRng,
     keystore::{FilesystemKeyStore, Keystore},
-    note::{Note, NoteMetadata, NoteRecipient, NoteScript, NoteStorage, NoteTag, NoteType},
     rpc::{Endpoint, GrpcClient},
     utils::Deserializable,
-    Client, Felt, Word,
+    Client,
 };
 use miden_client_sqlite_store::ClientBuilderSqliteExt;
 use miden_mast_package::{Package, SectionId};
@@ -162,7 +159,7 @@ pub fn account_component_from_package(
                 .context("Failed to deserialize account component metadata")?;
 
             let component = AccountComponent::new(
-                package.unwrap_library().as_ref().clone(),
+                package.mast.as_ref().clone(),
                 config.storage_slots.clone(),
                 metadata,
             )
@@ -213,123 +210,6 @@ pub async fn create_account_from_package(
         .context("Failed to add account to client")?;
 
     Ok(account)
-}
-
-/// Creates an existing account instance from a compiled package for testing.
-///
-/// # Arguments
-/// * `package` - The compiled package containing the account component
-/// * `config` - Configuration for account creation
-///
-/// # Errors
-/// Returns an error if the account component or account cannot be created.
-pub async fn create_testing_account_from_package(
-    package: Arc<Package>,
-    config: AccountCreationConfig,
-) -> Result<Account> {
-    let account_component = account_component_from_package(package, &config)
-        .context("Failed to create account component from package")?;
-
-    let account = AccountBuilder::new([3u8; 32])
-        .account_type(config.account_type)
-        .storage_mode(config.storage_mode)
-        .with_component(account_component)
-        .with_auth_component(NoAuth)
-        .build_existing()
-        .context("Failed to build account")?;
-
-    Ok(account)
-}
-
-/// Configuration for creating a note
-pub struct NoteCreationConfig {
-    /// The note visibility type.
-    pub note_type: NoteType,
-    /// The note tag to attach to the metadata.
-    pub tag: NoteTag,
-    /// Assets to include in the note.
-    pub assets: miden_client::note::NoteAssets,
-    /// Storage items passed to the note recipient.
-    pub storage: Vec<Felt>,
-}
-
-impl Default for NoteCreationConfig {
-    fn default() -> Self {
-        Self {
-            note_type: NoteType::Public,
-            // Note: This should never fail for valid inputs (0, 0)
-            tag: NoteTag::new(0),
-            assets: Default::default(),
-            storage: Default::default(),
-        }
-    }
-}
-
-/// Creates a note from a compiled package
-///
-/// # Arguments
-/// * `client` - The Miden client instance
-/// * `package` - The compiled package containing the note script
-/// * `sender_id` - The ID of the account sending the note
-/// * `config` - Configuration for note creation
-///
-/// # Returns
-/// The created `Note`
-///
-/// # Errors
-/// Returns an error if note creation fails
-pub fn create_note_from_package(
-    client: &mut Client<FilesystemKeyStore>,
-    package: Arc<Package>,
-    sender_id: AccountId,
-    config: NoteCreationConfig,
-) -> Result<Note> {
-    let note_program = package.unwrap_program();
-    let note_script = NoteScript::from_parts(
-        note_program.mast_forest().clone(),
-        note_program.entrypoint(),
-    );
-
-    let serial_num = client.rng().draw_word();
-    let note_storage = NoteStorage::new(config.storage).context("Failed to create note storage")?;
-    let recipient = NoteRecipient::new(serial_num, note_script, note_storage);
-
-    let metadata = NoteMetadata::new(sender_id, config.note_type).with_tag(config.tag);
-
-    Ok(Note::new(config.assets, metadata, recipient))
-}
-
-/// Creates a deterministic note from a compiled package for testing.
-///
-/// # Arguments
-/// * `package` - The compiled package containing the note script
-/// * `sender_id` - The ID of the account sending the note
-/// * `config` - Configuration for note creation
-///
-/// # Errors
-/// Returns an error if note creation fails.
-pub fn create_testing_note_from_package(
-    package: Arc<Package>,
-    sender_id: AccountId,
-    config: NoteCreationConfig,
-) -> Result<Note> {
-    let note_program = package.unwrap_program();
-    let note_script = NoteScript::from_parts(
-        note_program.mast_forest().clone(),
-        note_program.entrypoint(),
-    );
-
-    // get 4 random u64s and convert them to a word
-    let random_u64s = [0_u64; 4];
-    let serial_num =
-        Word::try_from(random_u64s).context("Failed to convert random u64s to word")?;
-
-    let note_storage = NoteStorage::new(config.storage).context("Failed to create note storage")?;
-    let recipient = NoteRecipient::new(serial_num, note_script, note_storage);
-
-    let metadata = NoteMetadata::new(sender_id, config.note_type).with_tag(config.tag);
-
-    Ok(Note::new(config.assets, metadata, recipient))
 }
 
 /// Creates a basic wallet account with authentication
