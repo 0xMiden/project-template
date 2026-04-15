@@ -1,6 +1,6 @@
 ---
 name: rust-sdk-pitfalls
-description: Critical pitfalls and safety rules for Miden Rust SDK development. Covers felt arithmetic security, comparison operators, argument limits, storage naming, no-std setup, asset layout, and P2ID roots. Use when reviewing, debugging, or writing Miden contract code.
+description: Critical pitfalls and safety rules for Miden Rust SDK development. Covers felt arithmetic security, comparison operators, argument limits, storage naming, no-std setup, asset layout, P2ID roots, NoteType construction, note-to-component call boundaries, and note input immutability. Use when reviewing, debugging, or writing Miden contract code.
 ---
 
 # Miden SDK Pitfalls
@@ -23,6 +23,8 @@ let new_balance = current_balance - withdraw_amount;
 ```
 
 **Rule**: ALWAYS check `.as_u64()` values before any Felt subtraction.
+
+**Max Felt value**: The maximum valid Felt is `p - 1 = 18446744069414584320`, not `u64::MAX` (`18446744073709551615`). Using `u64::MAX` as a sentinel or boundary value causes silent wraparound.
 
 ## P2: Felt Comparison Operators Are Misleading for Quantity Logic
 
@@ -131,6 +133,36 @@ fn p2id_note_root() -> Digest {
 
 **Mitigation**: Use `P2idNote::script_root()` from miden-standards if available, or verify the hardcoded root matches the current version after dependency updates.
 
+**NoteType for P2ID**: P2ID output notes created in contract code should use the private note type value via `NoteType::from(felt!(2))` (see P8). Using the public note type triggers an opaque "missing details in advice provider" error at execution time. See [miden-bank withdraw](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for the working pattern.
+
+## P8: NoteType Variants Unavailable in Compiler SDK
+
+**Severity**: Medium -- causes compilation errors
+
+Named enum variants (`NoteType::Private`, `NoteType::Public`, `NoteType::Encrypted`) don't exist in contract code. Construct via `NoteType::from()`:
+
+| NoteType | Value |
+|----------|-------|
+| Public | `NoteType::from(felt!(1))` |
+| Private | `NoteType::from(felt!(2))` |
+| Encrypted | `NoteType::from(felt!(3))` |
+
+See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for `NoteType::from(note_type)` usage.
+
+## P9: Note Scripts Cannot Call Native Account Functions
+
+**Severity**: High -- causes runtime failures
+
+Note scripts cannot call `native_account::add_asset()` or other `native_account::` functions directly. The kernel's `authenticate_account_origin` check rejects these calls from a note context. Instead, note scripts must call an account component method, which then calls `native_account::add_asset()` internally.
+
+See [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) for the correct pattern: the note script calls `bank_account::deposit()`, which internally calls `native_account::add_asset()`.
+
+## P10: Note Inputs Are Immutable After Creation
+
+**Severity**: Low -- causes incorrect architecture
+
+Note inputs (`active_note::get_storage()`) are baked at note creation time and cannot be modified after creation. Design note input layouts carefully before deployment.
+
 ## Quick Reference
 
 | Pitfall | One-Line Rule |
@@ -141,4 +173,7 @@ fn p2id_note_root() -> Digest {
 | P4 Storage names | `miden::component::pkg_name::field` (underscores) |
 | P5 No-std | `#![no_std]` + `#![feature(alloc_error_handler)]` |
 | P6 Asset layout | `[amount, 0, suffix, prefix]` |
-| P7 P2ID root | Verify digest after dependency updates |
+| P7 P2ID root | Verify digest after dependency updates; use `NoteType::from(felt!(2))` for private |
+| P8 NoteType | No named variants in contracts — use `NoteType::from(felt!(n))` |
+| P9 Note ↛ native_account | Note scripts must call component methods, not `native_account::` |
+| P10 Note inputs | Immutable after creation — design layouts upfront |

@@ -1,6 +1,6 @@
 ---
 name: rust-sdk-testing-patterns
-description: Guide to testing Miden smart contracts with MockChain. Covers test setup, contract building, account/note creation, transaction execution, storage verification, faucet setup, and output note verification. Use when writing, editing, or debugging Miden integration tests.
+description: Guide to testing Miden smart contracts with MockChain. Covers test setup, contract building, account/note creation, transaction execution, storage verification, faucet setup, output note verification, block numbering, multi-transaction tests, and asset-bearing notes. Use when writing, editing, or debugging Miden integration tests.
 ---
 
 # Miden Testing Patterns (MockChain)
@@ -27,7 +27,7 @@ let faucet = builder.add_existing_basic_faucet(
     Auth::BasicAuth,
     "TOKEN",     // token symbol
     1000,        // max supply
-    Some(10),    // decimals (None for 0)
+    Some(10),    // total_issuance (None for 0)
 )?;
 ```
 
@@ -66,7 +66,7 @@ See [counter_test.rs](../../../integration/tests/counter_test.rs) lines 54-58 fo
 For notes with assets and inputs:
 ```rust
 use miden_client::note::NoteAssets;
-use miden_standards::notes::FungibleAsset;
+use miden_client::asset::FungibleAsset;
 
 let note_assets = NoteAssets::new(vec![FungibleAsset::new(faucet.id(), 50)?.into()])?;
 let note = create_testing_note_from_package(
@@ -115,6 +115,9 @@ mock_chain.prove_next_block()?;
 See [counter_test.rs](../../../integration/tests/counter_test.rs) lines 82-92 for reading a StorageMap value and asserting on the result.
 
 ### 11. Verify Output Notes
+
+**Important**: `add_output_note()` is only available on `MockChainBuilder` (before `build()`) — use it to seed the chain with existing notes. To verify output notes from a transaction, use `extend_expected_output_notes()` on `TxContextBuilder`:
+
 ```rust
 use miden_client::note::{Note, NoteAssets, NoteMetadata, NoteRecipient};
 
@@ -129,42 +132,34 @@ let tx_context = mock_chain
 let executed = tx_context.execute().await?;
 ```
 
-## Multi-Step Test Pattern
+## Multi-Transaction Test Pattern
 
-For contracts requiring initialization before use:
+For contracts requiring initialization before use, each step needs its own execute → `apply_delta()` → `add_pending_executed_transaction()` → `prove_next_block()` cycle.
 
-```rust
-#[tokio::test]
-async fn multi_step_test() -> anyhow::Result<()> {
-    let mut builder = MockChain::builder();
-    // ... setup ...
-    let mut mock_chain = builder.build()?;
+See [miden-bank withdraw_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/withdraw_test.rs) for a complete multi-transaction test demonstrating: initialize bank → deposit assets → withdraw assets (3 sequential transactions with state verification between each step).
 
-    // Step 1: Initialize (via tx script)
-    let init_tx_context = mock_chain
-        .build_tx_context(account.id(), &[], &[])?
-        .tx_script(init_script)
-        .build()?;
-    let executed_init = init_tx_context.execute().await?;
-    account.apply_delta(executed_init.account_delta())?;
-    mock_chain.add_pending_executed_transaction(&executed_init)?;
-    mock_chain.prove_next_block()?;
+See [miden-bank deposit_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/deposit_test.rs) for asset-bearing note construction using `NoteAssets::new()` with `FungibleAsset`.
 
-    // Step 2: Main operation (via note consumption)
-    let tx_context = mock_chain
-        .build_tx_context(account.id(), &[note.id()], &[])?
-        .build()?;
-    let executed = tx_context.execute().await?;
-    account.apply_delta(executed.account_delta())?;
-    mock_chain.add_pending_executed_transaction(&executed)?;
-    mock_chain.prove_next_block()?;
+## MockChain Block Numbering
 
-    // Step 3: Verify state
-    // ...
+Genesis is block 0. Each `prove_next_block()` advances the block number by 1. In contract code, `tx::get_block_number()` returns the **reference block** — the last proven block at the time the transaction started, not the block the transaction will be included in.
 
-    Ok(())
-}
-```
+## Note Construction
+
+Always use `create_testing_note_from_package` (or mirror its logic with `.masp` package files) for creating notes in tests. Manually constructed notes may fail with a "private notes cannot be converted" error. See [counter_test.rs](../../../integration/tests/counter_test.rs) for the working pattern.
+
+## Asset-Bearing Note Example
+
+To create a note that carries fungible assets in tests:
+
+1. Create a `FungibleAsset` from a faucet ID and amount.
+2. Wrap it in `NoteAssets::new(vec![Asset::Fungible(fungible_asset)])`.
+3. Pass the `NoteAssets` into `NoteCreationConfig { assets: note_assets, ..Default::default() }`.
+4. Use `create_testing_note_from_package` as usual.
+
+The faucet must be set up first (see Step 3) and the sender wallet must hold sufficient assets (see Step 2).
+
+See [miden-bank deposit_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/deposit_test.rs) lines 56-70 for the complete working pattern, including `FungibleAsset::new()`, `NoteAssets::new()`, and `NoteCreationConfig` usage.
 
 ## Key Dependencies
 
@@ -177,5 +172,5 @@ See [integration/Cargo.toml](../../../integration/Cargo.toml) for the current de
 - [ ] All contracts built before account/note creation
 - [ ] `apply_delta()` called after each `execute()`
 - [ ] `prove_next_block()` called after `add_pending_executed_transaction()`
-- [ ] Notes added to builder via `add_output_note(OutputNote::Full(...))`
+- [ ] Notes added to `MockChainBuilder` via `add_output_note(OutputNote::Full(...))` (before `build()`)
 - [ ] Faucet set up before creating assets
