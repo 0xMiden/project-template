@@ -4,7 +4,9 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
-cargo-miden = { version = "0.8" }
+# cargo-miden = { version = "0.8" }
+# TODO: switch to v0.9 after the compiler release
+cargo-miden = { version = "0.8", git = "https://github.com/0xMiden/compiler", branch = "next"}
 miden-client = { version = "0.14", features = ["tonic"] }
 miden-client-sqlite-store = { version = "0.14", package = "miden-client-sqlite-store" }
 miden-testing = "0.14"
