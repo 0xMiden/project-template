@@ -5,8 +5,8 @@
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.filePath // empty')
 
-# Only trigger for files inside contracts/
-if [[ -z "$FILE_PATH" ]] || [[ "$FILE_PATH" != *"/contracts/"* ]]; then
+# Only trigger for files inside this project's contracts/ directory
+if [[ -z "$FILE_PATH" ]] || [[ "$FILE_PATH" != "$CLAUDE_PROJECT_DIR/contracts/"* ]]; then
   exit 0
 fi
 
@@ -18,12 +18,25 @@ if [[ ! -f "$CARGO_TOML" ]]; then
   exit 0
 fi
 
-# Run cargo miden build
-if cargo miden build --manifest-path "$CARGO_TOML" --release 2>&1; then
+# Detect which build tool is available (midenup installs `miden`, cargo install provides `cargo-miden`)
+if command -v miden &> /dev/null; then
+  BUILD_CMD="miden build"
+elif cargo miden --version &> /dev/null; then
+  BUILD_CMD="cargo miden build"
+else
+  echo '{"hookSpecificOutput": {"additionalContext": "Contract build skipped: neither '\''miden'\'' nor '\''cargo-miden'\'' found. Install via midenup or: cargo install cargo-miden"}}'
+  exit 0
+fi
+
+# Run build once, capturing output
+BUILD_OUTPUT=$($BUILD_CMD --manifest-path "$CARGO_TOML" --release 2>&1)
+BUILD_EXIT=$?
+
+if [[ $BUILD_EXIT -eq 0 ]]; then
   echo '{"hookSpecificOutput": {"additionalContext": "Contract build succeeded"}}'
   exit 0
 else
-  BUILD_OUTPUT=$(cargo miden build --manifest-path "$CARGO_TOML" --release 2>&1 | tail -20)
-  echo "{\"hookSpecificOutput\": {\"additionalContext\": \"Contract build FAILED. Fix compilation errors before continuing.\n$BUILD_OUTPUT\"}}"
+  TAIL_OUTPUT=$(echo "$BUILD_OUTPUT" | tail -20)
+  echo "{\"hookSpecificOutput\": {\"additionalContext\": \"Contract build FAILED. Fix compilation errors before continuing.\n$TAIL_OUTPUT\"}}"
   exit 2
 fi
