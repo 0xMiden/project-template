@@ -472,8 +472,9 @@ dependencies = [
 
 [[package]]
 name = "cargo-miden"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30f09004aa4b92f7a56924a76aae792f4adcae3adcac46ac384e73cea3827694"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -2746,8 +2747,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-codegen-masm"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ddea2c6050fea142e4f8c526c55bf3656c69c80e66bd099dd79728bdccda12f"
 dependencies = [
  "anyhow",
  "inventory",
@@ -2775,8 +2777,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-compile"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "927ad8e3f4f47949ae63cad358bcf510634765726e57f677c4d1cddadd8233ee"
 dependencies = [
  "anyhow",
  "clap",
@@ -2797,8 +2800,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-dialect-arith"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "015e5132f919666624203c2a7d355a757a1265c419d385acc7ff8478b2a3edfe"
 dependencies = [
  "midenc-hir",
  "paste",
@@ -2806,8 +2810,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-dialect-cf"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddd32b0180d00707f0d2d6050c4cd24f0fa2ef3093a643dbdbf31792ded9cdef"
 dependencies = [
  "log",
  "midenc-dialect-arith",
@@ -2816,8 +2821,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-dialect-hir"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb7333ca7996df3809cdbabc66b840e80bff44924570823adf218a1af4364ad0"
 dependencies = [
  "log",
  "midenc-dialect-arith",
@@ -2829,8 +2835,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-dialect-scf"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32798b83efc34a7301f6fdf77c622ef5217d4dbed1fe68c62e2c7d07686964d0"
 dependencies = [
  "bitvec",
  "log",
@@ -2843,16 +2850,18 @@ dependencies = [
 
 [[package]]
 name = "midenc-dialect-ub"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47b3327a327fc4a13a08a2d9791b0cba5ef21e0c4ce2a4e18433d363c8c8dc47"
 dependencies = [
  "midenc-hir",
 ]
 
 [[package]]
 name = "midenc-dialect-wasm"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c3284470339b901630d30c87c7d5fff962f41dc863c8979867664040ea07552"
 dependencies = [
  "midenc-dialect-arith",
  "midenc-dialect-hir",
@@ -2861,8 +2870,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-frontend-wasm"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cee10db6ca611ca6e829a8625e179135dc729118974ec65006f8d17120a713a1"
 dependencies = [
  "addr2line 0.24.2",
  "anyhow",
@@ -2887,8 +2897,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-frontend-wasm-metadata"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6938fd4efb4a2c8937c77055a3779ddda33572728328cf4391d2f240f78be3a"
 dependencies = [
  "serde",
  "serde_json",
@@ -2896,8 +2907,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-hir"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51141b60afe741ff47d8d95d8b7f9a8eeb32154257181aa73ef59b7f8cbaf759"
 dependencies = [
  "anyhow",
  "base64",
@@ -2927,8 +2939,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-hir-analysis"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbc8c3b28addc2560dc4b7cf4b4297ce5119bfaf645542f96e0d9f93bcee20f0"
 dependencies = [
  "bitvec",
  "blink-alloc",
@@ -2938,8 +2951,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-hir-macros"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea4df411507d77af2b7ea70fd8e8a7e67272bbcb4a248386a647673cb9e19d97"
 dependencies = [
  "Inflector",
  "darling",
@@ -2950,8 +2964,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-hir-symbol"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e212c781c59429229ba6a33d75151257175d88f722a60c333a855a790ca61b"
 dependencies = [
  "Inflector",
  "compact_str",
@@ -2965,8 +2980,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-hir-transform"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e1483fa0bb318eaf9b112b99280afecf917bf277a026774bf5db7db9c8964d3"
 dependencies = [
  "log",
  "midenc-hir",
@@ -2990,8 +3006,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-log"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7463ae49be6e3612436bbe6af937112a23fb27d9c4e4cfb5b49c281b3b9f1b63"
 dependencies = [
  "anstream 0.6.21",
  "anstyle",
@@ -3002,8 +3019,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-session"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6895a782776dbba38034f6db4869da700e6b685a147869135c0b0ba86d38bdf"
 dependencies = [
  "anyhow",
  "clap",
