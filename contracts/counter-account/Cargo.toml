@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-miden = { git = "https://github.com/0xMiden/compiler", rev = "630c65795e44b17d43d2a289009aca96d56f57ee" }
+miden = { version = "0.12" }
 
 [package.metadata.component]
 package = "miden:counter-account"

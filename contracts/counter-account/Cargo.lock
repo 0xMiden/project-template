@@ -945,8 +945,9 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
 name = "miden"
-version = "0.11.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76174f46c7bd1aaf25163cb6c4cf6d9bdb1993d5466ba543c1d6c343a080b767"
 dependencies = [
  "miden-base",
  "miden-base-macros",
@@ -1009,8 +1010,9 @@ dependencies = [
 
 [[package]]
 name = "miden-base"
-version = "0.11.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45eaf65ed9fc03898e162c9ff9649079568075543a7bcac474f3befe1ec10ad2"
 dependencies = [
  "miden-base-sys",
  "miden-stdlib-sys",
@@ -1018,8 +1020,9 @@ dependencies = [
 
 [[package]]
 name = "miden-base-macros"
-version = "0.11.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d52bebbd631f689028da59d3c1259cb1e8309e9c59cf0a9a625a98e057bebdfe"
 dependencies = [
  "heck",
  "miden-formatting",
@@ -1036,8 +1039,9 @@ dependencies = [
 
 [[package]]
 name = "miden-base-sys"
-version = "0.11.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74c8466611116cc47e620705c32624d9a4de0dd777ef95f03219d5580e93bcaf"
 dependencies = [
  "miden-field-repr",
  "miden-stdlib-sys",
@@ -1185,8 +1189,9 @@ dependencies = [
 
 [[package]]
 name = "miden-field-repr"
-version = "0.11.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5dba0d085dfb109ebe2a9a6b1acb014f417ae8bfebb17845991ba1c215036822"
 dependencies = [
  "miden-core",
  "miden-field 0.22.6",
@@ -1195,8 +1200,9 @@ dependencies = [
 
 [[package]]
 name = "miden-field-repr-derive"
-version = "0.11.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "489216f38e837d9b9a1ad66524649b92ab0fcd7d90662e52952fc56e8703d305"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1319,8 +1325,9 @@ dependencies = [
 
 [[package]]
 name = "miden-sdk-alloc"
-version = "0.11.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65e9824b7e7297619902c6cb73d71db08434ac07a24ca5a167e8647352698c2e"
 
 [[package]]
 name = "miden-serde-utils"
@@ -1344,8 +1351,9 @@ dependencies = [
 
 [[package]]
 name = "miden-stdlib-sys"
-version = "0.11.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44231388ca9ed654bc84e71ff2daca69fb353997066bdf8ebe19b1cf80330b53"
 dependencies = [
  "miden-field 0.22.6",
 ]
@@ -1413,8 +1421,9 @@ dependencies = [
 
 [[package]]
 name = "midenc-frontend-wasm-metadata"
-version = "0.8.0"
-source = "git+https://github.com/0xMiden/compiler?rev=630c65795e44b17d43d2a289009aca96d56f57ee#630c65795e44b17d43d2a289009aca96d56f57ee"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6938fd4efb4a2c8937c77055a3779ddda33572728328cf4391d2f240f78be3a"
 dependencies = [
  "serde",
  "serde_json",
