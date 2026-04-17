@@ -20,7 +20,7 @@ async fn counter_test() -> anyhow::Result<()> {
     // Test that after executing the increment note, the counter value is incremented by 1
     let mut builder = MockChain::builder();
 
-    // Crate note sender account
+    // Create note sender account
     let sender = builder.add_existing_wallet(Auth::BasicAuth {
         auth_scheme: AuthSchemeId::Falcon512Poseidon2,
     })?;

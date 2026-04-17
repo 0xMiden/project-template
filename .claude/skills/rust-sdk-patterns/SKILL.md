@@ -82,7 +82,7 @@ let amount = asset.value[0];
 // Keep the asset key if you need to persist or compare the asset class
 let asset_key = asset.key;
 
-// Add asset to account vault (only from component methods, not note scripts — see pitfall P9)
+// Add asset to account vault (only from component methods, not note scripts — see pitfall P11)
 native_account::add_asset(asset);
 
 // Remove asset from account vault
@@ -135,7 +135,7 @@ use alloc::vec::Vec;
 
 ## Asset Receiving via Component Methods
 
-Note scripts cannot call `native_account::add_asset()` directly (see pitfall P9). The canonical pattern is for an account component to expose a public method that wraps `native_account::add_asset()`, and note scripts call that method via cross-component bindings.
+Note scripts cannot call `native_account::add_asset()` directly (see pitfall P11). The canonical pattern is for an account component to expose a public method that wraps `native_account::add_asset()`, and note scripts call that method via cross-component bindings.
 
 See [miden-bank bank-account deposit()](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for the component side: the `deposit()` method validates the deposit, updates storage, and calls `native_account::add_asset()`.
 

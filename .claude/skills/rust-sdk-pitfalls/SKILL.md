@@ -178,9 +178,9 @@ fn p2id_note_root() -> Digest {
 
 **Mitigation**: Use `P2idNote::script_root()` from miden-standards if available, or verify the hardcoded root matches the current version after dependency updates.
 
-**NoteType for P2ID**: P2ID output notes created in contract code should use the private note type value via `NoteType::from(felt!(2))` (see P8). Using the public note type triggers an opaque "missing details in advice provider" error at execution time. See [miden-bank withdraw](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for the working pattern.
+**NoteType for P2ID**: P2ID output notes created in contract code should use the private note type value via `NoteType::from(felt!(2))` (see P10). Using the public note type triggers an opaque "missing details in advice provider" error at execution time. See [miden-bank withdraw](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for the working pattern.
 
-## P8: NoteType Variants Unavailable in Compiler SDK
+## P10: NoteType Variants Unavailable in Compiler SDK
 
 **Severity**: Medium -- causes compilation errors
 
@@ -194,7 +194,7 @@ Named enum variants (`NoteType::Private`, `NoteType::Public`, `NoteType::Encrypt
 
 See [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for `NoteType::from(note_type)` usage.
 
-## P9: Note Scripts Cannot Call Native Account Functions
+## P11: Note Scripts Cannot Call Native Account Functions
 
 **Severity**: High -- causes runtime failures
 
@@ -202,9 +202,8 @@ Note scripts cannot call `native_account::add_asset()` or other `native_account:
 
 See [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) for the correct pattern: the note script calls `bank_account::deposit()`, which internally calls `native_account::add_asset()`.
 
-## P10: Note Inputs Are Immutable After Creation
+## P12: Note Inputs Are Immutable After Creation
 
 **Severity**: Low -- causes incorrect architecture
 
 Note inputs (`active_note::get_storage()`) are baked at note creation time and cannot be modified after creation. Design note input layouts carefully before deployment.
-

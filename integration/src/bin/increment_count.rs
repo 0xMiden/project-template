@@ -95,10 +95,5 @@ async fn main() -> Result<()> {
 
     println!("Consume transaction ID: {:?}", consume_tx_id.to_hex());
 
-    // println!(
-    //     "Account delta: {:?}",
-    //     consume_note_request.
-    // );
-
     Ok(())
 }
