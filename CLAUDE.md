@@ -27,7 +27,7 @@ Always build contracts before running tests — tests compile contracts via `bui
 ## SDK Quick Reference
 
 See the working examples in this project:
-- `contracts/counter-account/src/lib.rs` — Account component with StorageMap
+- `contracts/counter-account/src/lib.rs` — Account component with typed `StorageMap<Word, Felt>`
 - `contracts/increment-note/src/lib.rs` — Note script with cross-component call
 - `integration/tests/counter_test.rs` — MockChain integration test
 
@@ -35,11 +35,14 @@ See the working examples in this project:
 
 **Felt arithmetic is modular (SECURITY CRITICAL)**: Subtraction wraps around the field modulus instead of panicking. ALWAYS validate before subtraction:
 ```rust
-assert!(current.as_u64() >= amount.as_u64(), "Insufficient balance");
+assert!(
+    current.as_canonical_u64() >= amount.as_canonical_u64(),
+    "Insufficient balance"
+);
 let result = current - amount;
 ```
 
-**Felt comparisons are misleading for quantity logic**: `<`, `>`, `<=`, `>=` on Felt compare field elements, which differs from natural number ordering. For business logic (balances, amounts, counts), ALWAYS convert first: `a.as_u64() < b.as_u64()`
+**Felt comparisons are misleading for quantity logic**: `<`, `>`, `<=`, `>=` on Felt compare field elements, which differs from natural number ordering. For business logic (balances, amounts, counts), ALWAYS convert first: `a.as_canonical_u64() < b.as_canonical_u64()`
 
 **No-std required**: All contracts must use `#![no_std]` and `#![feature(alloc_error_handler)]`. For heap allocation, use `extern crate alloc;` and `BumpAlloc`.
 

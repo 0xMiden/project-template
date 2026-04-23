@@ -30,7 +30,7 @@ Key properties:
 ### Accounts
 Each account is an independent smart contract containing:
 - **Code** — Immutable logic compiled from Rust components
-- **Storage** — Up to 255 slots (Value or StorageMap)
+- **Storage** — Up to 255 slots exposed in Rust as `StorageValue<T>` or `StorageMap<K, V>`
 - **Vault** — Holds fungible and non-fungible assets
 - **Nonce** — Incremented with each state change
 - **ID** — Unique identifier (prefix + suffix, 2 Felts)
@@ -58,7 +58,8 @@ A transaction is a **single-account state transition** with 4 phases:
 2. Bob's transaction consumes that note, receiving the tokens
 
 ### Assets
-- **Fungible**: `[amount, 0, faucet_suffix, faucet_prefix]` (1 Word)
+- **SDK shape**: `Asset { key: Word, value: Word }`
+- **Fungible**: asset amount lives in `asset.value[0]`
 - **Non-fungible**: Unique token tied to a faucet account
 - Assets live in account **vaults** and move between accounts via notes
 - Created by **faucet accounts** using `faucet::create_fungible_asset()` or `faucet::mint()`
@@ -66,8 +67,10 @@ A transaction is a **single-account state transition** with 4 phases:
 ### Felt and Word
 - **Felt**: Field element in the Goldilocks prime field (p = 2^64 - 2^32 + 1). The fundamental data unit.
 - **Word**: Array of 4 Felts (32 bytes). Used for cryptographic hashes, storage keys, account IDs.
+- **Current constructors**: `Felt::new`, `Felt::from_u8` / `from_u16` / `from_u32`, `Felt::from_canonical_checked`, `Word::new`, `Word::from([u32; 4])`, `Word::from([Felt; 4])`, `Word::try_from([u64; 4])`
+- **Current accessors**: `felt.as_canonical_u64()`, `word.as_elements()`, `word.into_elements()`, `word.as_bytes()`, `word.to_hex()`
 
-**WARNING**: Felt arithmetic is **modular**. Subtraction wraps around the prime. Always validate with `.as_u64()` before subtracting. See the rust-sdk-pitfalls skill for details.
+**WARNING**: Felt arithmetic is **modular**. Subtraction wraps around the prime. Always validate with `.as_canonical_u64()` before subtracting. See the rust-sdk-pitfalls skill for details.
 
 ## Standard Note Patterns
 
@@ -94,6 +97,6 @@ Contracts are tested locally with **MockChain** (no network needed) and deployed
 
 1. **One account per service** — Each bank, vault, or DEX pool is a separate account
 2. **Notes for communication** — Use deposit/withdraw/request notes instead of direct calls
-3. **Storage for state** — Use `Value` for flags, `StorageMap` for mappings
+3. **Storage for state** — Use `StorageValue<T>` for single slots and `StorageMap<K, V>` for mappings
 4. **Privacy by default** — Choose `NoteType::Public` only when discoverability is needed
 5. **Components for reuse** — Standard wallet, auth, and faucet components compose into accounts
