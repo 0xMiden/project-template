@@ -84,8 +84,8 @@ git clone --depth 1 --branch main https://github.com/0xMiden/compiler.git ../com
 # Required: contains client API for deployment and chain interaction
 git clone --depth 1 --branch main https://github.com/0xMiden/miden-client.git ../miden-client
 
-# Recommended: complete working banking app with advanced patterns
-git clone --branch main https://github.com/keinberger/miden-bank.git ../miden-bank
+# Recommended: complete working banking app with advanced patterns in the `examples/miden-bank` folder of the tutorials repo
+git clone --branch main https://github.com/0xMiden/tutorials.git ../tutorials
 ```
 
 **Note**: These commands clone the stable `main` branch. Only use `--branch next` if the user explicitly requests the experimental/upcoming version of the compiler or source repos.
