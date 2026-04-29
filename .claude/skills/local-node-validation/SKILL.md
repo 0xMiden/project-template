@@ -17,8 +17,8 @@ MockChain simplifies execution in ways that hide real-world failures:
 4. **No version/genesis validation** -- MockChain skips the `Accept` header version check that live nodes enforce.
 5. **Account update block numbers not tracked** -- MockChain returns chain tip instead of actual update block number.
 6. **No mempool or batching** -- MockChain does not simulate transaction queuing, batch formation, or block inclusion delays.
-7. **Genesis hash is cached in the client store** -- after the first sync, the client persists the network's genesis commitment in `local-store.sqlite3` and ships it on every Accept header. Switching networks (local node to testnet, or vice versa) without wiping the store fails with `accept header validation failed`.
-8. **`NoteTag(0)` notes are invisible during live sync** -- live nodes filter notes by client tag subscriptions. `NoteTag::new(0)` produces all-zero routing bits that no subscription matches, so such notes never reach the client. MockChain bypasses sync filtering, so the bug only surfaces on a real node. Use `NoteTag::with_account_target(account_id)` (or a use-case constructor) when targeting a specific account.
+7. **Genesis hash is cached in the client store** -- after the first sync, the client persists the network's genesis commitment in its SQLite store (default path `store.sqlite3` per `integration/src/helpers.rs`; `local-store.sqlite3` for the local-validation variant introduced in Step 2) and ships it on every Accept header. Switching networks (local node to testnet, or vice versa) without wiping the active store fails with `accept header validation failed`.
+8. **`NoteTag(0)` notes are not delivered by default subscriptions** -- live nodes filter `SyncNotes` and `SyncState` responses by the tag list each client has subscribed to. `NoteTag::new(0)` has all-zero routing bits, so the default account-derived subscription that `add_account` registers (`NoteTagRecord::with_account_source(NoteTag::with_account_target(id), id)`) does not match it. Such notes still exist on-chain and remain queryable, but a client only receives them during sync if it explicitly tracks tag 0 via `Client::add_note_tag(...)`. MockChain bypasses sync filtering and surfaces these notes anyway, hiding the gap until live validation. Prefer `NoteTag::with_account_target(account_id)`, a use-case tag constructor, or an explicit `add_note_tag` subscription when notes must reach the recipient via sync.
 
 ## Prerequisites
 
@@ -137,7 +137,7 @@ Look for:
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `Unavailable` RPC error | Node not running or wrong port | Start node, verify port 57291 |
-| `accept header validation failed` after switching networks | Client store cached the genesis commitment from a different network | Delete `local-store.sqlite3` and re-sync |
+| `accept header validation failed` after switching networks | Client store cached the genesis commitment from a different network | Delete the active client store (`store.sqlite3` by default; `local-store.sqlite3` for local validation) and re-sync |
 | Version mismatch error | Node binary lags client crate (`cargo install miden-node` may pin an older published crate) | Reinstall to match `miden-client` from `integration/Cargo.toml`: `cargo install miden-node --locked --git https://github.com/0xMiden/miden-node --tag v<version>`, or use `midenup` |
 | Vite or proxy returns 404 on RPC calls from frontend | Proxy targets the wrong path prefix | gRPC paths are `/rpc.Api/<method>` (e.g. `/rpc.Api/SyncState`, `/rpc.Api/GetAccount`); forward the `/rpc.Api` prefix in the proxy config |
 | Transaction rejected | Invalid proof or state | Check contract code, reset node data, try again |
