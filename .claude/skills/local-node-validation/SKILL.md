@@ -17,11 +17,13 @@ MockChain simplifies execution in ways that hide real-world failures:
 4. **No version/genesis validation** -- MockChain skips the `Accept` header version check that live nodes enforce.
 5. **Account update block numbers not tracked** -- MockChain returns chain tip instead of actual update block number.
 6. **No mempool or batching** -- MockChain does not simulate transaction queuing, batch formation, or block inclusion delays.
+7. **Genesis hash is cached in the client store** -- after the first sync, the client persists the network's genesis commitment in `local-store.sqlite3` and ships it on every Accept header. Switching networks (local node to testnet, or vice versa) without wiping the store fails with `accept header validation failed`.
+8. **`NoteTag(0)` notes are invisible during live sync** -- live nodes filter notes by client tag subscriptions. `NoteTag::new(0)` produces all-zero routing bits that no subscription matches, so such notes never reach the client. MockChain bypasses sync filtering, so the bug only surfaces on a real node. Use `NoteTag::with_account_target(account_id)` (or a use-case constructor) when targeting a specific account.
 
 ## Prerequisites
 
 - [ ] MockChain integration tests pass: `cargo test -p integration --release`
-- [ ] `miden-node` installed: `cargo install miden-node --locked`
+- [ ] `miden-node` installed and version-matched with the client. Check the `miden-client` version in `integration/Cargo.toml`; the node binary must be on the same minor release. `cargo install miden-node --locked` may pin an older published crate; if so, install from source: `cargo install miden-node --locked --git https://github.com/0xMiden/miden-node --tag v<version>`. `midenup` manages matched toolchains.
 - [ ] Working integration binary exists in `integration/src/bin/`
 
 ## Step 1: Clean State and Start Local Node
@@ -96,6 +98,8 @@ Key differences from testnet binary:
 - Separate keystore and store paths
 - Must handle block production timing (sync + wait between submissions)
 
+**Account deployment**: `Client::add_account()` only writes the account to the local client store; it does not register the account on-chain. To make a public or network account discoverable by other clients, submit a transaction involving the account (typically the account's first transaction). Until that transaction is included in a block, `get_account_details(id)` from any other client returns "not found".
+
 ## Step 4: Run and Verify
 
 Ensure clean client state before running (the node should already be clean from Step 1):
@@ -133,8 +137,10 @@ Look for:
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `Unavailable` RPC error | Node not running or wrong port | Start node, verify port 57291 |
-| Version mismatch error | Node and client crate versions differ | Rebuild node from same miden-node version as client deps |
+| `accept header validation failed` after switching networks | Client store cached the genesis commitment from a different network | Delete `local-store.sqlite3` and re-sync |
+| Version mismatch error | Node binary lags client crate (`cargo install miden-node` may pin an older published crate) | Reinstall to match `miden-client` from `integration/Cargo.toml`: `cargo install miden-node --locked --git https://github.com/0xMiden/miden-node --tag v<version>`, or use `midenup` |
+| Vite or proxy returns 404 on RPC calls from frontend | Proxy targets the wrong path prefix | gRPC paths are `/rpc.Api/<method>` (e.g. `/rpc.Api/SyncState`, `/rpc.Api/GetAccount`); forward the `/rpc.Api` prefix in the proxy config |
 | Transaction rejected | Invalid proof or state | Check contract code, reset node data, try again |
-| Account not found after creation | Haven't synced | Call `sync_state()` after account creation |
-| Store errors or deserialization failures | Stale state from previous session | Wipe everything: `rm -rf local-node-data/ local-keystore/ local-store.sqlite3` and re-bootstrap |
+| Account not found after `add_account()` | `add_account()` is local-only; it does not register the account on-chain | Submit a transaction involving the account to deploy it on-chain, then `sync_state()` |
+| Store errors or deserialization failures | Stale state from a previous session, or cached genesis from a different network | Wipe everything: `rm -rf local-node-data/ local-keystore/ local-store.sqlite3` and re-bootstrap |
 | Block not produced | Node produces blocks when transactions arrive | Submit a transaction; check `--block-producer.block-interval` setting |
