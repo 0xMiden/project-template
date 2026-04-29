@@ -31,6 +31,10 @@ See the working examples in this project:
 - `contracts/increment-note/src/lib.rs` — Note script with cross-component call
 - `integration/tests/counter_test.rs` — MockChain integration test
 
+Common cargo commands:
+- `cargo build -p integration --bin <name> --release`: build a specific binary from the integration crate (e.g. `validate_local`, `increment_count`)
+- `cargo clean -p integration`: run after editing shared library code (e.g. `helpers.rs`) before re-running tests, to avoid stale compiled binaries
+
 ## Critical Pitfalls
 
 **Felt arithmetic is modular (SECURITY CRITICAL)**: Subtraction wraps around the field modulus instead of panicking. ALWAYS validate before subtraction:
