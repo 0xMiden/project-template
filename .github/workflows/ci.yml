@@ -12,16 +12,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Install Rust
       run: |
         rustup update --no-self-update
         rustc --version
     - name: Install Miden cargo extension
-      uses: actions-rs/cargo@v1
-      with:
-        command: install
-        args: cargo-miden
+      run: cargo install cargo-miden
     - name: Run integration tests
       working-directory: integration
       run: cargo test
