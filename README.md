@@ -127,5 +127,6 @@ To add a new crate to the workspace:
 
 This template includes resources for AI-assisted development:
 - `CLAUDE.md` — Project context loaded automatically by Claude Code
+- `.cursorrules` — Project-level guidance for Cursor
 - `.claude/skills/` — On-demand skill files for Miden SDK patterns, pitfalls, testing, and source exploration
 - `.claude/hooks/build-contracts.sh` — Automatic build verification after contract edits
