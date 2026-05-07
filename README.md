@@ -58,7 +58,7 @@ This structure provides flexibility as your application grows, allowing you to a
 To create a new contract crate, run the following command from the workspace root:
 
 ```bash
-miden cargo-miden new --account contracts/my-account
+miden new --account contracts/my-account
 ```
 
 This will scaffold a new contract crate inside the `contracts/` directory with all the necessary boilerplate.
@@ -85,11 +85,11 @@ Tests are located in `integration/tests/`. To add a new test:
 
 ```bash
 # Compile a specific contract
-miden cargo-miden build --manifest-path contracts/counter-account/Cargo.toml
+miden build --manifest-path contracts/counter-account/Cargo.toml
 
 # Or navigate to the contract directory
 cd contracts/counter-account
-miden cargo-miden build
+miden build
 ```
 
 ### Run a Binary
