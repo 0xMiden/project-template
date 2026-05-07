@@ -37,6 +37,7 @@ if [[ $BUILD_EXIT -eq 0 ]]; then
   exit 0
 else
   TAIL_OUTPUT=$(echo "$BUILD_OUTPUT" | tail -20)
-  echo "{\"hookSpecificOutput\": {\"additionalContext\": \"Contract build FAILED. Fix compilation errors before continuing.\n$TAIL_OUTPUT\"}}"
+  jq -n --arg ctx "Contract build FAILED. Fix compilation errors before continuing."$'\n'"$TAIL_OUTPUT" \
+    '{"hookSpecificOutput": {"additionalContext": $ctx}}'
   exit 2
 fi
