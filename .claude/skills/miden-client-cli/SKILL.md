@@ -46,11 +46,11 @@ Subsequent commands operate against that config. For localhost workflows, pair t
 
 ## Canonical Command Reference
 
-For the full command list, follow the canonical references:
+Follow the canonical in-repo references on `0xMiden/miden-client` (the active line, which matches project-template's pinned `miden-client = "0.14"`). The `miden-docs` site (`0xMiden.github.io/miden-docs/...`) is not used here because those URLs are not stable.
 
-- CLI Reference: [0xMiden.github.io/miden-docs/miden-client/cli-reference.html](https://0xMiden.github.io/miden-docs/miden-client/cli-reference.html)
-- Configuration: [0xMiden.github.io/miden-docs/miden-client/cli-config.html](https://0xMiden.github.io/miden-docs/miden-client/cli-config.html)
-- Online docs index: [0xMiden.github.io/miden-docs/miden-client/](https://0xMiden.github.io/miden-docs/miden-client/index.html)
+- CLI Reference: [`docs/external/src/rust-client/cli/index.md`](https://github.com/0xMiden/miden-client/blob/main/docs/external/src/rust-client/cli/index.md)
+- CLI Configuration: [`docs/external/src/rust-client/cli/cli-config.md`](https://github.com/0xMiden/miden-client/blob/main/docs/external/src/rust-client/cli/cli-config.md)
+- Repo overview and recent release notes: [`0xMiden/miden-client`](https://github.com/0xMiden/miden-client) (browse the `CHANGELOG.md` on `main` for the latest behavioral changes; pin to a release tag if you need a snapshot).
 
 Representative commands (full syntax in the canonical reference):
 
