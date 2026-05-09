@@ -82,7 +82,7 @@ let amount = asset.value[0];
 // Keep the asset key if you need to persist or compare the asset class
 let asset_key = asset.key;
 
-// Add asset to account vault (only from component methods, not note scripts — see pitfall P11)
+// Add asset to account vault (only from component methods, not note scripts; see pitfall P11)
 native_account::add_asset(asset);
 
 // Remove asset from account vault
@@ -132,6 +132,22 @@ If you need heap allocation (Vec, String, etc.):
 extern crate alloc;
 use alloc::vec::Vec;
 ```
+
+## Cross-Component Note Pattern
+
+A note script reads from `active_note::*` and forwards work to a public account-component method via generated bindings. This is the canonical pattern for any note that updates account state, because note scripts cannot call `native_account::*` directly (see `rust-sdk-pitfalls` skill, P11).
+
+The note script reads `active_note::get_sender()`, `active_note::get_assets()`, and (when needed) `active_note::get_inputs()`, parses the inputs into typed values, then makes one or more cross-component calls. The component method does the actual state changes (storage updates, vault adds/removes, output-note creation).
+
+For Cargo.toml wiring (cross-component dependencies + bindings import), see "Cross-Component Dependencies" above. For the asset-only special case (no inputs, just sender + assets), see "Asset Receiving via Component Methods" below.
+
+**Inputs-free case** (sender + assets, single component call per asset): see [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) for the note script. It reads `active_note::get_sender()` and `active_note::get_assets()`, then calls `bank_account::deposit(depositor, asset)` per asset.
+
+**With-inputs case** (parse a Felt vector into typed values, then call): see [miden-bank withdraw-request-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/withdraw-request-note/src/lib.rs) for an 11-Felt input layout (`[asset(4) | serial_num(4) | tag(1) | aux(1) | note_type(1)]`) parsed and forwarded to `bank_account::withdraw(depositor, withdraw_asset, serial_num, tag, aux, note_type)`.
+
+**Component side that absorbs the call**: see [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for `deposit(...)` and `withdraw(...)`. Both methods validate (felt-arithmetic safety, see `rust-sdk-pitfalls` P1), update storage, and (for `withdraw`) create a P2ID output note via the existing P2ID pattern.
+
+**Test wiring**: tests pass the input vector through `NoteCreationConfig.inputs`. See `rust-sdk-testing-patterns` skill, "Note Construction" section, for the helper that builds a note from a compiled `.masp` package and a populated `NoteCreationConfig`.
 
 ## Asset Receiving via Component Methods
 
