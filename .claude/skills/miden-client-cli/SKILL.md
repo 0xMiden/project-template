@@ -52,20 +52,7 @@ Follow the canonical in-repo references on `0xMiden/miden-client` (the active li
 - CLI Configuration: [`docs/external/src/rust-client/cli/cli-config.md`](https://github.com/0xMiden/miden-client/blob/main/docs/external/src/rust-client/cli/cli-config.md)
 - Repo overview and recent release notes: [`0xMiden/miden-client`](https://github.com/0xMiden/miden-client) (browse the `CHANGELOG.md` on `main` for the latest behavioral changes; pin to a release tag if you need a snapshot).
 
-Representative commands (full syntax in the canonical reference):
-
-| Command | Purpose |
-|---|---|
-| `miden client init --network <network>` | Write a `miden-client.toml` config. |
-| `miden client sync` | Sync local store with the node. |
-| `miden client new-wallet` | Create a wallet account. |
-| `miden client new-account --account-type fungible-faucet --packages <path>.masp` | Create an account from a compiled package. |
-| `miden client account --list` | List tracked accounts. |
-| `miden client mint --target <ID> --asset <AMOUNT>::<FAUCET_ID> --note-type <TYPE>` | Mint assets via a faucet. |
-| `miden client send` | Send to another account. |
-| `miden client consume-notes --account <ACCOUNT_ID> [NOTE_IDS...]` | Consume notes (omit IDs to consume any consumable note). |
-
-Replace `miden client` with `miden-client` when using the direct-install path.
+For the live command list and flags on the installed binary, run `miden client --help` (midenup path) or `miden-client --help` (direct-install path). Drill into a specific command with `miden client <command> --help`. The canonical references above remain authoritative for deeper documentation.
 
 ## Cross-References
 

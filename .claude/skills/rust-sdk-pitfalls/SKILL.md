@@ -206,4 +206,4 @@ See [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/exa
 
 **Severity**: Low -- causes incorrect architecture
 
-Note inputs (`active_note::get_storage()`) are baked at note creation time and cannot be modified after creation. Design note input layouts carefully before deployment.
+The Felt slice that the `#[note]` macro deserializes into `self` is baked at note creation time and cannot be modified after creation. Design the typed note struct's field set and field order carefully before deployment; any later change is a breaking change for existing notes.

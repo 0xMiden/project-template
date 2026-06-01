@@ -51,7 +51,7 @@ fn run(_arg: Word, account: &mut Account) {
 |--------|--------------|---------|
 | `native_account::` | `add_asset(Asset)`, `remove_asset(Asset)`, `incr_nonce()` | Modify account vault/nonce |
 | `active_account::` | `get_id() -> AccountId`, `get_balance(AccountId) -> Felt` | Query current account |
-| `active_note::` | `get_storage() -> Vec<Felt>`, `get_assets() -> Vec<Asset>`, `get_sender() -> AccountId` | Query note being consumed |
+| `active_note::` | `get_assets() -> Vec<Asset>`, `get_sender() -> AccountId` | Query note being consumed (typed note storage arrives as `self` in the `#[note_script]` method; see "Cross-Component Note Pattern" below) |
 | `note::` | `build_recipient(Word, Word, Vec<Felt>) -> Recipient` | Build note recipients from serial number, script root, and note storage |
 | `output_note::` | `create(Tag, NoteType, Recipient) -> NoteIdx`, `add_asset(Asset, NoteIdx)` | Create output notes |
 | `faucet::` | `create_fungible_asset(Felt) -> Asset`, `mint(Asset)`, `burn(Asset)` | Asset minting |
@@ -137,19 +137,39 @@ use alloc::vec::Vec;
 
 A note script reads from `active_note::*` and forwards work to a public account-component method via generated bindings. This is the canonical pattern for any note that updates account state, because note scripts cannot call `native_account::*` directly (see `rust-sdk-pitfalls` skill, P11).
 
-The note script reads `active_note::get_sender()`, `active_note::get_assets()`, and (when the note carries scripted data) `active_note::get_storage()`, parses the storage Felts into typed values, then makes one or more cross-component calls. The component method does the actual state changes (storage updates, vault adds/removes, output-note creation).
+The `#[note]` macro generates `TryFrom<&[Felt]>` for the note struct, so the note's serialized storage is deserialized into typed fields before the script runs. The `#[note_script]` method receives the deserialized note as `self` (by value) and never indexes a raw Felt slice manually. Alongside the required `Word` arg, the method may optionally accept a `&Account` or `&mut Account` parameter. See [compiler/sdk/base-macros/src/lib.rs](https://github.com/0xMiden/compiler/blob/main/sdk/base-macros/src/lib.rs) for the macro contract and [compiler/sdk/base-macros/src/note.rs](https://github.com/0xMiden/compiler/blob/main/sdk/base-macros/src/note.rs) for the generated deserialization (each named field is read via `<T as miden::felt_repr::FromFeltRepr>::from_felt_repr(...)` and EOF is asserted at the end).
 
-For Cargo.toml wiring (cross-component dependencies + bindings import), see "Cross-Component Dependencies" above. For the asset-only special case (no storage, just sender + assets), see "Asset Receiving via Component Methods" below.
+Supported field types include `Felt`, the unsigned integer scalars (`u64`, `u32`, `u8`), `bool`, `Option<T>`, and `Vec<T>` via the `FromFeltRepr` trait (`compiler/sdk/field-repr/repr/src/lib.rs`), plus any user type that opts in with `#[derive(FromFeltRepr)]` (this is how `AccountId` supports the macro - see `compiler/sdk/base-sys/src/bindings/types.rs`). Do **not** use `Asset` or `Word` directly as note struct fields; those types do not currently derive `FromFeltRepr`. If you need asset-shaped data inside the note, flatten it into supported scalar fields and reconstruct inside the script, or keep it on the side as a separate `active_note::get_assets()` read.
 
-Note macro form: a note is declared as a unit struct annotated with `#[note]`, and its script lives in a `#[note_script]` method on a matching `#[note] impl ... { ... }` block. The script method takes `self` and a `_arg: Word`. See [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) for the project-template's local example using this form.
+For Cargo.toml wiring (cross-component dependencies + bindings import), see "Cross-Component Dependencies" above. See [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) for the project-template's local example of the `#[note] struct + #[note] impl` macro form.
 
-**Storage-free case** (sender + assets, single component call per asset): see [miden-bank deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs). Inside `#[note] impl DepositNote { #[note_script] fn run(self, _arg: Word) }` it reads `active_note::get_sender()` and `active_note::get_assets()`, then calls `bank_account::deposit(depositor, asset)` per asset.
+**Storage-free case** (sender + assets, single component call per asset): declare a unit struct (`#[note] struct DepositNote;`). The script reads `active_note::get_sender()` and iterates `active_note::get_assets()`, calling the component method per asset. The macro still generates the deserialization wrapper; for a unit struct it only asserts the storage Felt slice is empty.
 
-**With-storage case** (parse a Felt vector into typed values, then call): see [miden-bank withdraw-request-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/withdraw-request-note/src/lib.rs) for a 14-Felt note storage layout (`[asset(4) | serial_num(4) | tag(1) | note_type(1) | script_root(4)]`) read via `active_note::get_storage()` and forwarded to `bank_account::withdraw(depositor, withdraw_asset, serial_num, tag, note_type)`. The 4-Felt P2ID `script_root` lives in `storage[10..13]` and is read inside the component method via `active_note::get_storage()` rather than passed as a parameter, because the WIT flat-params limit caps a method at 16 Felts of arguments.
+**Typed-storage case** (note carries scripted data): declare named fields on the note struct. The macro deserializes them in declaration order, and the script accesses them via `self.<field>`. Illustrative shape:
 
-**Component side that absorbs the call**: see [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for `deposit(...)` and `withdraw(...)`. Both methods validate (felt-arithmetic safety, see `rust-sdk-pitfalls` P1), update storage, and (for `withdraw`) create a P2ID output note via the existing P2ID pattern.
+```rust
+#[note]
+struct DepositNote {
+    depositor: AccountId,
+}
 
-**Test wiring**: tests pass the storage vector through `NoteCreationConfig.storage`. See `rust-sdk-testing-patterns` skill, "Note Construction" section, for the helper that builds a note from a compiled `.masp` package and a populated `NoteCreationConfig`.
+#[note]
+impl DepositNote {
+    #[note_script]
+    pub fn run(self, _arg: Word) {
+        let assets = active_note::get_assets();
+        for asset in assets {
+            bank_account::deposit(self.depositor, asset);
+        }
+    }
+}
+```
+
+(`use` statements and crate attributes elided; see [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) for a complete file.) For a verified working example with an `&mut Account` parameter, see [compiler/examples/p2id-note/src/lib.rs](https://github.com/0xMiden/compiler/blob/main/examples/p2id-note/src/lib.rs) (`#[note] struct P2idNote { target_account_id: AccountId }`, where the script asserts `account.get_id() == self.target_account_id` and calls `account.receive_asset(asset)` for each attached asset).
+
+**Component side that absorbs the call**: see [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for `deposit(...)` and `withdraw(...)` in a fuller example. The component method validates (felt-arithmetic safety, see `rust-sdk-pitfalls` P1), updates storage, and (for `withdraw`) creates a P2ID output note via the existing P2ID pattern. Note: miden-bank currently demonstrates an older raw-indexing variant for its withdraw-request note; treat the typed pattern shown above as the preferred shape for new note scripts.
+
+**Test wiring**: tests pass the serialized Felt representation of the note struct's fields through `NoteCreationConfig.storage`, in declaration order. See `rust-sdk-testing-patterns` skill, "Note Construction" section, for the helper that builds a note from a compiled `.masp` package and a populated `NoteCreationConfig`.
 
 ## Asset Receiving via Component Methods
 
