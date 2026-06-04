@@ -162,7 +162,7 @@ Accounts can include standard components (BasicWallet, authentication) alongside
 Create output notes (like P2ID) from within contract code. Requires building a recipient with `note::build_recipient(serial_num, script_root, storage)` and then using `output_note::create(...)`. The `miden-bank/` withdraw pattern demonstrates this end-to-end.
 
 ### Note Storage Protocol
-Notes receive storage data as `Vec<Felt>` which is deserialized into the note object. In the `#[note_script]` method the `self` is deserialized from the note storage (`active_note::get_storage()`).
+Notes carry storage data as a `Vec<Felt>` baked at creation time. The `#[note]` macro generates a `TryFrom<&[Felt]>` for the note struct via the `FromFeltRepr` trait, so the `#[note_script]` method receives the deserialized note as `self` (by value); the script reads typed fields with `self.<field>` and never indexes the raw Felt slice.
 Attached assets are separate and should be read with `active_note::get_assets()`.
 
 ### Atomic Swaps
