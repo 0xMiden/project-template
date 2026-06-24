@@ -3,12 +3,11 @@
 use std::{path::Path, sync::Arc};
 
 use anyhow::{bail, Context, Result};
-use cargo_miden::{run, OutputType};
+use cargo_miden::run;
 use miden_client::{
     account::{
         component::{BasicWallet, InitStorageData, NoAuth},
-        Account, AccountBuilder, AccountComponent, AccountStorageMode, AccountType,
-        StorageSlotName,
+        Account, AccountBuilder, AccountComponent, AccountType, StorageSlotName,
     },
     auth::{AuthSchemeId, AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
@@ -88,15 +87,15 @@ pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
         &manifest_arg,
     ];
 
-    let output = run(args.into_iter().map(String::from), OutputType::Masm)
+    let output = run(args.into_iter().map(String::from))
         .context("Failed to compile project")?
         .context("Cargo miden build returned None")?;
 
     let artifact_path = match output {
-        cargo_miden::CommandOutput::BuildCommandOutput { output } => match output {
-            cargo_miden::BuildOutput::Masm { artifact_path } => artifact_path,
-            other => bail!("Expected Masm output, got {:?}", other),
-        },
+        cargo_miden::CommandOutput::BuildCommandOutput { output } => output
+            .into_iter()
+            .next()
+            .context("cargo miden build produced no artifact")?,
         other => bail!("Expected BuildCommandOutput, got {:?}", other),
     };
 
@@ -116,16 +115,15 @@ pub const COUNTER_STORAGE_KEY: Word = Word::new([Felt::ZERO, Felt::ZERO, Felt::Z
 /// # Errors
 /// Returns an error if the fixed storage slot name is invalid.
 pub fn counter_storage_slot() -> Result<StorageSlotName> {
-    StorageSlotName::new("miden_counter_account::counter_contract::count_map")
+    StorageSlotName::new("counter_account::counter_contract::count_map")
         .context("invalid counter storage slot name")
 }
 
 /// Configuration for creating an account with a custom component
 pub struct AccountCreationConfig {
-    /// The account type to create.
+    /// The account type to create. In protocol v0.15 this also encodes the
+    /// storage visibility (`AccountType::Public` / `AccountType::Private`).
     pub account_type: AccountType,
-    /// The account storage visibility mode.
-    pub storage_mode: AccountStorageMode,
     /// Initial component storage data keyed by storage slot schema.
     pub init_storage_data: InitStorageData,
 }
@@ -133,8 +131,7 @@ pub struct AccountCreationConfig {
 impl Default for AccountCreationConfig {
     fn default() -> Self {
         Self {
-            account_type: AccountType::RegularAccountImmutableCode,
-            storage_mode: AccountStorageMode::Public,
+            account_type: AccountType::Public,
             init_storage_data: InitStorageData::default(),
         }
     }
@@ -166,7 +163,6 @@ pub async fn create_account_from_package(
 
     let account = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
-        .storage_mode(config.storage_mode)
         .with_component(account_component)
         .with_auth_component(NoAuth)
         .build()
@@ -206,7 +202,6 @@ pub async fn create_basic_wallet_account(
 
     let builder = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
-        .storage_mode(config.storage_mode)
         .with_auth_component(AuthSingleSig::new(
             key_pair.public_key().to_commitment(),
             AuthSchemeId::Falcon512Poseidon2,
