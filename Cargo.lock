@@ -399,7 +399,7 @@ dependencies = [
 [[package]]
 name = "cargo-miden"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "anyhow",
  "clap",
@@ -999,7 +999,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2703,7 +2703,7 @@ dependencies = [
 [[package]]
 name = "midenc-codegen-masm"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "anyhow",
  "inventory",
@@ -2732,7 +2732,7 @@ dependencies = [
 [[package]]
 name = "midenc-compile"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "cargo_metadata",
  "clap",
@@ -2757,7 +2757,7 @@ dependencies = [
 [[package]]
 name = "midenc-dialect-arith"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "midenc-hir",
  "paste",
@@ -2766,7 +2766,7 @@ dependencies = [
 [[package]]
 name = "midenc-dialect-cf"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "log",
  "midenc-dialect-arith",
@@ -2776,7 +2776,7 @@ dependencies = [
 [[package]]
 name = "midenc-dialect-hir"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "log",
  "miden-thiserror",
@@ -2791,7 +2791,7 @@ dependencies = [
 [[package]]
 name = "midenc-dialect-scf"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "bitvec",
  "log",
@@ -2805,7 +2805,7 @@ dependencies = [
 [[package]]
 name = "midenc-dialect-ub"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "midenc-hir",
 ]
@@ -2813,7 +2813,7 @@ dependencies = [
 [[package]]
 name = "midenc-dialect-wasm"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "midenc-dialect-arith",
  "midenc-dialect-hir",
@@ -2823,7 +2823,7 @@ dependencies = [
 [[package]]
 name = "midenc-frontend-masm"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "miden-assembly",
  "miden-assembly-syntax",
@@ -2842,7 +2842,7 @@ dependencies = [
 [[package]]
 name = "midenc-frontend-wasm"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "addr2line 0.26.1",
  "anyhow",
@@ -2868,7 +2868,7 @@ dependencies = [
 [[package]]
 name = "midenc-frontend-wasm-metadata"
 version = "0.12.0"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "serde",
  "serde_json",
@@ -2877,7 +2877,7 @@ dependencies = [
 [[package]]
 name = "midenc-hir"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "anyhow",
  "base64",
@@ -2906,7 +2906,7 @@ dependencies = [
 [[package]]
 name = "midenc-hir-analysis"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "bitvec",
  "blink-alloc",
@@ -2917,7 +2917,7 @@ dependencies = [
 [[package]]
 name = "midenc-hir-macros"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "Inflector",
  "darling",
@@ -2929,7 +2929,7 @@ dependencies = [
 [[package]]
 name = "midenc-hir-symbol"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "Inflector",
  "compact_str",
@@ -2944,7 +2944,7 @@ dependencies = [
 [[package]]
 name = "midenc-hir-transform"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "log",
  "midenc-hir",
@@ -2969,7 +2969,7 @@ dependencies = [
 [[package]]
 name = "midenc-log"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "anstream",
  "anstyle",
@@ -2981,7 +2981,7 @@ dependencies = [
 [[package]]
 name = "midenc-session"
 version = "0.8.1"
-source = "git+https://github.com/0xMiden/compiler?branch=fix-masp-target-dir#c427cf83fd8e517e23eec9bed857191d6ad7c63f"
+source = "git+https://github.com/0xMiden/compiler?branch=next#708812369cf364b7d2f0e768133fd00184052835"
 dependencies = [
  "anyhow",
  "clap",
@@ -4107,7 +4107,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4594,7 +4594,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5447,7 +5447,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
