@@ -30,3 +30,7 @@ local-node-data/
 # Ignore contract build artifacts
 contracts/**/target/
 
+# cargo-miden writes the compiled package here when tests build contracts
+# from the integration crate's working directory
+integration/target/
+

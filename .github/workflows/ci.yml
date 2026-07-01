@@ -17,8 +17,6 @@ jobs:
       run: |
         rustup update --no-self-update
         rustc --version
-    - name: Install Miden cargo extension
-      run: cargo install cargo-miden
     - name: Run integration tests
       working-directory: integration
       run: cargo test

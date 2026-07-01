@@ -3,14 +3,12 @@ use std::{path::Path, sync::Arc};
 use anyhow::Context;
 use integration::helpers::{build_project_in_dir, counter_storage_slot, COUNTER_STORAGE_KEY};
 use miden_client::{
-    account::{
-        component::InitStorageData, AccountBuilder, AccountComponent, AccountStorageMode,
-        AccountType,
-    },
+    account::{component::InitStorageData, AccountBuilder, AccountComponent, AccountType},
     auth::AuthSchemeId,
     crypto::RandomCoin,
     note::NoteScript,
     transaction::RawOutputNote,
+    Word,
 };
 use miden_standards::testing::note::NoteBuilder;
 use miden_testing::{AccountState, Auth, MockChain};
@@ -47,17 +45,16 @@ async fn counter_test() -> anyhow::Result<()> {
             auth_scheme: AuthSchemeId::Falcon512Poseidon2,
         },
         AccountBuilder::new([3_u8; 32])
-            .account_type(AccountType::RegularAccountImmutableCode)
-            .storage_mode(AccountStorageMode::Public)
+            .account_type(AccountType::Public)
             .with_component(counter_component),
         AccountState::Exists,
     )?;
 
-    let mut note_rng = RandomCoin::new(
+    let mut note_rng = RandomCoin::new(Word::from(
         NoteScript::from_package(note_package.as_ref())
             .context("failed to build note script from package")?
             .root(),
-    );
+    ));
     let counter_note = NoteBuilder::new(sender.id(), &mut note_rng)
         .package((*note_package).clone())
         .build()
