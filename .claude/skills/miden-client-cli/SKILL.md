@@ -46,7 +46,7 @@ Subsequent commands operate against that config. For localhost workflows, pair t
 
 ## Canonical Command Reference
 
-Follow the canonical in-repo references on `0xMiden/miden-client` (the active line, which matches project-template's pinned `miden-client = "0.14"`). The `miden-docs` site (`0xMiden.github.io/miden-docs/...`) is not used here because those URLs are not stable.
+Follow the canonical in-repo references on `0xMiden/miden-client` (the active line, which matches project-template's pinned `miden-client = "0.15"`). The `miden-docs` site (`0xMiden.github.io/miden-docs/...`) is not used here because those URLs are not stable.
 
 - CLI Reference: [`docs/external/src/rust-client/cli/index.md`](https://github.com/0xMiden/miden-client/blob/main/docs/external/src/rust-client/cli/index.md)
 - CLI Configuration: [`docs/external/src/rust-client/cli/cli-config.md`](https://github.com/0xMiden/miden-client/blob/main/docs/external/src/rust-client/cli/cli-config.md)
