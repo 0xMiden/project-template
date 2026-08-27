@@ -3,7 +3,9 @@ use std::{path::Path, sync::Arc};
 use anyhow::Context;
 use integration::helpers::{build_project_in_dir, counter_storage_slot, COUNTER_STORAGE_KEY};
 use miden_client::{
-    account::{component::InitStorageData, AccountBuilder, AccountComponent, AccountType},
+    account::{
+        component::InitStorageData, AccountBuilder, AccountComponent, AccountType, StorageMapKey,
+    },
     auth::AuthSchemeId,
     crypto::RandomCoin,
     note::NoteScript,
@@ -68,7 +70,8 @@ async fn counter_test() -> anyhow::Result<()> {
 
     // Build the transaction context
     let tx_context = mock_chain
-        .build_tx_context(counter_account.clone(), &[counter_note.id()], &[])?
+        .build_transaction(counter_account.clone())
+        .authenticated_input_notes([counter_note.id()])
         .build()?;
 
     // Execute the transaction
@@ -82,7 +85,10 @@ async fn counter_test() -> anyhow::Result<()> {
     let count = mock_chain
         .committed_account(counter_account.id())?
         .storage()
-        .get_map_item(&counter_storage_slot, COUNTER_STORAGE_KEY)
+        .get_map_item(
+            &counter_storage_slot,
+            StorageMapKey::new(COUNTER_STORAGE_KEY),
+        )
         .expect("Failed to get counter value from storage slot");
 
     // Map values are returned as scalar words in `[value, 0, 0, 0]` layout.

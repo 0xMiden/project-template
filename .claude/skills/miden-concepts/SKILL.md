@@ -21,7 +21,7 @@ Key properties:
 | Transactions involve sender + receiver | Transactions involve **one account only** |
 | Public state by default | **Private by default** |
 | Validators execute transactions | **Client executes and proves** locally |
-| Gas metering | No gas (computational bounds exist) |
+| EVM-style gas metering | Verification fees are chain-configured in v0.16; a zero base fee charges nothing, while computational bounds still apply |
 | Synchronous contract calls | **Asynchronous** communication via notes |
 | Accounts are balances + storage | Accounts are **full smart contracts** with code, storage, and vault |
 
@@ -53,6 +53,8 @@ A transaction is a **single-account state transition** with 4 phases:
 3. Update account state (storage, vault, nonce)
 4. Produce output notes (for other accounts to consume later)
 
+The account's authentication procedure authorizes the transition and handles any v0.16 verification fee. The fee is derived from estimated verification cycles and the reference block's `verification_base_fee`. A zero base fee creates no fee note and needs no conversion information. On a fee-charging chain the vault must hold the payment asset: signature auth can commit explicit fee-conversion information, while `NoAuth` pays only in the native fee asset at 1/1 and rejects explicit conversion information.
+
 **Important**: A two-party transfer (Alice sends Bob tokens) requires TWO transactions:
 1. Alice's transaction creates a P2ID note with tokens attached
 2. Bob's transaction consumes that note, receiving the tokens
@@ -62,7 +64,7 @@ A transaction is a **single-account state transition** with 4 phases:
 - **Fungible**: asset amount lives in `asset.value[0]`
 - **Non-fungible**: Unique token tied to a faucet account
 - Assets live in account **vaults** and move between accounts via notes
-- Created by **faucet accounts** using `faucet::create_fungible_asset()` or `faucet::mint()`
+- Issued by **faucet accounts**; faucet components define the asset class and their mint/burn procedures operate on assets
 
 ### Felt and Word
 - **Felt**: Field element in the Goldilocks prime field (p = 2^64 - 2^32 + 1). The fundamental data unit.
@@ -87,7 +89,7 @@ A transaction is a **single-account state transition** with 4 phases:
 |-----------|---------|
 | `BasicWallet` | Standard wallet: `receive_asset()`, `move_asset_to_note()` |
 | `FungibleFaucet` | Mint/burn fungible tokens; built via `FungibleFaucet::builder()` |
-| `NoAuth` | No authentication (for testing) |
+| `NoAuth` | No-signature auth for testing/trusted flows; still pays a nonzero fee from the account vault in the native fee asset at 1/1 |
 | `AuthSingleSig` | Production signature authentication — unified auth component covering both Falcon-512 and ECDSA-K256 key types |
 
 **Auth**: `AuthSingleSig` is a single auth component that dispatches on the key type, so one component handles both Falcon-512 and ECDSA-K256 keys. The Falcon-512 scheme uses Poseidon2 as its hash function and is named `Falcon512Poseidon2`.

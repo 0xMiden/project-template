@@ -1,11 +1,11 @@
 ---
 name: rust-sdk-testing-patterns
-description: Guide to testing Miden smart contracts with MockChain (Miden v0.15). Covers test setup, contract building, account/note creation, transaction execution, storage verification, faucet setup, output note verification, block numbering, multi-transaction tests, and asset-bearing notes. Use when writing, editing, or debugging Miden integration tests.
+description: Guide to testing Miden smart contracts with MockChain on the protocol v0.16 RC stack. Covers test setup, contract building, account/note creation, transaction execution, storage verification, faucet setup, output note verification, block numbering, multi-transaction tests, and asset-bearing notes. Use when writing, editing, or debugging Miden integration tests.
 ---
 
 # Miden Testing Patterns (MockChain)
 
-These patterns target Miden **v0.15** (`miden-client`/`miden-standards`/`miden-testing` 0.15.x).
+These patterns target the frozen v0.16 RC stack: `miden-client 0.16.0-rc.2`, protocol/standards/testing `0.16.0-rc.6`, and `miden-mast-package 0.29.1`.
 
 The **authoritative working example** in this project is the counter contract: [counter_test.rs](../../../integration/tests/counter_test.rs) is a complete test covering imports, MockChain setup, contract building, account creation with storage, note creation, transaction execution, and storage verification. Mirror it for the patterns below.
 
@@ -13,14 +13,16 @@ The **authoritative working example** in this project is the counter contract: [
 
 Tests go in `integration/tests/`. All tests are async and use MockChain for local execution without a network.
 
-The v0.15 imports [counter_test.rs](../../../integration/tests/counter_test.rs) relies on are:
+The imports [counter_test.rs](../../../integration/tests/counter_test.rs) relies on are:
 
 ```rust
 use std::{path::Path, sync::Arc};
 
 use integration::helpers::{build_project_in_dir, counter_storage_slot, COUNTER_STORAGE_KEY};
 use miden_client::{
-    account::{component::InitStorageData, AccountBuilder, AccountComponent, AccountType},
+    account::{
+        component::InitStorageData, AccountBuilder, AccountComponent, AccountType, StorageMapKey,
+    },
     auth::AuthSchemeId,
     crypto::RandomCoin,
     note::NoteScript,
@@ -80,7 +82,7 @@ Example: package `counter-account` with `[lib].namespace = "miden:counter-accoun
 
 Note the middle segment is `counter_contract` (the interface segment from the namespace), **not** `counter_contract_storage` (the struct) and **not** `counter_account`, and there is no `miden_` org prefix. This is exactly the string [integration/src/helpers.rs](../../../integration/src/helpers.rs) passes to `StorageSlotName::new(...)` in `counter_storage_slot()`.
 
-The component's storage is declared with the v0.15 three-part component macro (`#[component_storage]` struct + `#[component]` trait + `#[component]` impl); the storage struct, not the trait, carries the `#[storage]` fields the slot names derive from. See the `rust-sdk-patterns` skill for the contract side.
+The component's storage is declared with the three-part component macro (`#[component_storage]` struct + `#[component]` trait + `#[component]` impl); the storage struct, not the trait, carries the `#[storage]` fields the slot names derive from. Callable component methods carry `#[account_procedure]` on the trait declaration. See the `rust-sdk-patterns` skill for the contract side.
 
 **Authoritative pattern** (from [counter_test.rs](../../../integration/tests/counter_test.rs)): build the `StorageSlotName`, seed the component's initial storage into `InitStorageData`, build the `AccountComponent` from the compiled package, then register the account with `builder.add_account_from_builder(...)`:
 
@@ -160,7 +162,19 @@ Register accounts (`add_account_from_builder(...)` already registered the counte
 
 ### 8. Execute Transaction
 
-The full execution flow is `build_tx_context` -> `execute()` -> `add_pending_executed_transaction()` -> `prove_next_block()` (see [counter_test.rs](../../../integration/tests/counter_test.rs)). The single-transaction counter test does not call `apply_delta()` because `counter_account` is not reused after the build; final state is read from `mock_chain.committed_account(...)` after the block is proven. Multi-transaction tests that keep using the in-memory `Account` variable across steps should call `account.apply_delta(&executed.account_delta())?` after each `execute()` (see "Multi-Transaction Test Pattern" below).
+Build the transaction with the current staged builder, then execute and prove it (see [counter_test.rs](../../../integration/tests/counter_test.rs)):
+
+```rust
+let tx_context = mock_chain
+    .build_transaction(counter_account.clone())
+    .authenticated_input_notes([counter_note.id()])
+    .build()?;
+let executed = tx_context.execute().await?;
+mock_chain.add_pending_executed_transaction(&executed)?;
+mock_chain.prove_next_block()?;
+```
+
+The single-transaction counter test does not patch `counter_account` because it is not reused after the build; final state is read from `mock_chain.committed_account(...)` after the block is proven. Multi-transaction tests that retain an in-memory `Account` apply the executed transaction's absolute patch after each execution (see "Multi-Transaction Test Pattern" below).
 
 ### 9. Execute with Transaction Script
 
@@ -180,7 +194,7 @@ let tx_script_package = Arc::new(build_project_in_dir(
 let tx_script = build_tx_script_from_package(tx_script_package.as_ref())?;
 
 let executed = mock_chain
-    .build_tx_context(account.id(), &[], &[])?
+    .build_transaction(account.clone())
     .tx_script(tx_script)
     .build()?
     .execute()
@@ -196,20 +210,23 @@ let updated_account = mock_chain.committed_account(account.id())?;
 
 ### 10. Verify Storage State
 
-Read state with `account.storage().get_item(&slot)` / `.get_map_item(&slot, key)` on an in-memory `Account` you keep `apply_delta`-current, or re-fetch the committed account with `mock_chain.committed_account(account.id())?` after `prove_next_block()` and assert on its storage. Map values come back as scalar words in `[value, 0, 0, 0]` layout, so read index `[0]` (see [counter_test.rs](../../../integration/tests/counter_test.rs)):
+Read state with `account.storage().get_item(&slot)` / `.get_map_item(&slot, StorageMapKey::new(key))` on an in-memory `Account` you keep patch-current, or re-fetch the committed account with `mock_chain.committed_account(account.id())?` after `prove_next_block()` and assert on its storage. Map values come back as scalar words in `[value, 0, 0, 0]` layout, so read index `[0]` (see [counter_test.rs](../../../integration/tests/counter_test.rs)):
 
 ```rust
 let count = mock_chain
     .committed_account(counter_account.id())?
     .storage()
-    .get_map_item(&counter_storage_slot, COUNTER_STORAGE_KEY)
+    .get_map_item(
+        &counter_storage_slot,
+        StorageMapKey::new(COUNTER_STORAGE_KEY),
+    )
     .expect("Failed to get counter value from storage slot");
 assert_eq!(count[0].as_canonical_u64(), 1);
 ```
 
 ### 11. Verify Output Notes
 
-**Important**: `add_output_note()` is only available on `MockChainBuilder` (before `build()`) — use it to seed the chain with existing notes. To verify output notes from a transaction, use `extend_expected_output_notes()` on `TxContextBuilder`:
+**Important**: `add_output_note()` is only available on `MockChainBuilder` (before `build()`) — use it to seed the chain with existing notes. To verify output notes from a transaction, use `expected_output_notes()` on the transaction builder:
 
 ```rust
 use miden_client::{
@@ -224,8 +241,9 @@ let partial_metadata = PartialNoteMetadata::new(sender, NoteType::Public).with_t
 let expected_note = Note::new(expected_assets, partial_metadata, expected_recipient);
 
 let tx_context = mock_chain
-    .build_tx_context(account.id(), &[note.id()], &[])?
-    .extend_expected_output_notes(vec![RawOutputNote::Full(expected_note)])
+    .build_transaction(account.clone())
+    .authenticated_input_notes([note.id()])
+    .expected_output_notes(vec![RawOutputNote::Full(expected_note)])
     .build()?;
 
 // execute() will verify output notes match
@@ -242,16 +260,18 @@ Notes flow through MockChain in four steps:
 
 1. **Build** the note from a compiled `.masp` package via `NoteBuilder` (see "Note Construction" below).
 2. **Seed** with `MockChainBuilder::add_output_note(RawOutputNote::Full(note.clone()))` BEFORE `builder.build()`. This places the note on the chain so a later transaction can consume it. `add_output_note(...)` is only available on the builder; once `builder.build()` returns the `MockChain`, output notes can only appear as the result of executing a transaction. `RawOutputNote` is re-exported from `miden_client::transaction`.
-3. **Consume** by passing the note ID to `mock_chain.build_tx_context(account, &[note.id()], &[])`. The transaction's note-script execution reads the consumed note's storage and assets.
-4. **Verify** expected output notes with `.extend_expected_output_notes(vec![RawOutputNote::Full(expected.clone())])` on the `TxContextBuilder`. `tx_context.execute().await?` will assert the produced output notes match.
+3. **Consume** with `mock_chain.build_transaction(account.clone()).authenticated_input_notes([note.id()])`. The transaction's note-script execution reads the consumed note's storage and assets.
+4. **Verify** expected output notes with `.expected_output_notes(vec![RawOutputNote::Full(expected.clone())])` on the transaction builder. `tx_context.execute().await?` will assert the produced output notes match.
 
-After `execute()` and before `add_pending_executed_transaction(...) + prove_next_block()`: if a later step will keep using the in-memory `Account` variable (for example, to build another `tx_context` or assert account state directly), call `account.apply_delta(&executed.account_delta())?` to keep the variable in sync with the chain. Post-block reads should use `mock_chain.committed_account(account.id())?` (see Step 8 above and "Multi-Transaction Test Pattern" below). For block advancement and reference-block semantics, see "MockChain Block Numbering" below.
+After `execute()` and before reusing the in-memory `Account` variable, call `account.apply_patch(executed.account_patch())?` to apply the transaction's absolute `AccountPatch`. Post-block reads may instead use `mock_chain.committed_account(account.id())?` (see Step 8 above and "Multi-Transaction Test Pattern" below). For block advancement and reference-block semantics, see "MockChain Block Numbering" below.
 
 ## Multi-Transaction Test Pattern
 
 For contracts requiring initialization before use, each step usually needs its own `execute()` → `add_pending_executed_transaction()` → `prove_next_block()` cycle. Fetch the committed account or note state from `mock_chain` between steps before building the next context.
 
-`apply_delta()` is needed whenever you keep reading from / reusing the **same in-memory `Account`** across transactions — whether they land in the same block or in separate blocks. Call `account.apply_delta(&executed.account_delta())?` after each `execute()` (each followed by `add_pending_executed_transaction` + `prove_next_block`) so later local reads like `account.storage().get_map_item(...)` see the latest state. If you instead re-fetch via `mock_chain.committed_account(...)` after `prove_next_block()`, you can skip `apply_delta()` — that is the single-transaction case shown in [counter_test.rs](../../../integration/tests/counter_test.rs), which reads final state only after the last `prove_next_block()` and never reuses the in-memory variable.
+Whenever a test keeps reading from or reusing the **same in-memory `Account`** across transactions, call `account.apply_patch(executed.account_patch())?` after each `execute()` so later local reads see the latest absolute state. If you instead re-fetch via `mock_chain.committed_account(...)` after `prove_next_block()`, no local patch is needed; that is the single-transaction case shown in [counter_test.rs](../../../integration/tests/counter_test.rs).
+
+Do not generalize this rename to transaction summaries: `TransactionSummary::account_delta()` intentionally returns a relative `AccountDelta`. That relative summary is valid for commitment/summary assertions, while account mutation uses `AccountPatch` and `apply_patch()`.
 
 ## MockChain Block Numbering
 
@@ -281,7 +301,7 @@ The faucet must be set up first (see Step 3) and the sender wallet must hold suf
 
 ## Key Dependencies
 
-See [integration/Cargo.toml](../../../integration/Cargo.toml) for the exact versions. The integration crate depends on `cargo-miden = "0.9"` (its `build_project_in_dir` helper calls `cargo_miden::run`) alongside the 0.15 line — `miden-client`, `miden-standards`, `miden-testing`, and `miden-client-sqlite-store` at `0.15`, plus `miden-mast-package = "0.23"` — with no git-rev/branch pins. The contracts it builds depend on the guest SDK `miden = "0.13"` and compile with the released compiler v0.9.0.
+See [integration/Cargo.toml](../../../integration/Cargo.toml) for the exact host versions: client/SQLite store `0.16.0-rc.2`, protocol/standards/testing `0.16.0-rc.6`, and MAST package `0.29.1`. The integration graph intentionally has no `cargo-miden` library dependency. `build_project_in_dir()` launches the isolated absolute `cargo-miden 0.10.0-rc.1` binary installed from compiler revision `2a5ebf830c910aa5f7bf53ee4df398915ab12f7a`, parses its `Compiled <path>` report, and deserializes the package. Contract manifests pin guest `miden = "=0.14.0-rc.1"` and build support to that same revision.
 
 ## Validation Checklist
 
@@ -291,11 +311,13 @@ See [integration/Cargo.toml](../../../integration/Cargo.toml) for the exact vers
 - [ ] Storage slot names follow `<package_name>::<interface_segment>::<field_name>` (bare package name, `[lib].namespace` interface segment, e.g. `counter_account::counter_contract::count_map`)
 - [ ] Map slots seeded per-entry via `InitStorageData::insert_map_entry(slot, key, value)`; value slots without a schema default seeded via `InitStorageData::insert_value(StorageValueName::from_slot_name(&slot), ..)` with a `Word` (e.g. `Word::default()`), not a bare integer (numeric `Into<WordValue>` yields an atomic string, not a felt-positioned word)
 - [ ] All contracts built before account/note creation
+- [ ] Transactions use `build_transaction(...).authenticated_input_notes([...]).build()`
+- [ ] Host map lookups wrap keys with `StorageMapKey::new(...)`; `InitStorageData::insert_map_entry(...)` still accepts the raw schema key
 - [ ] `NoteScript::root()` converted with `Word::from(...)` before seeding `RandomCoin`
 - [ ] Note-storage felts built with infallible `Felt::from(_u32)` or `Felt::new_unchecked(_u64)` (`Felt::new(u64)` returns `Result`, so a bare `[Felt::new(..)]` array does not satisfy `Item = Felt`)
 - [ ] `Note::new(...)` is passed a `PartialNoteMetadata` (not `NoteMetadata`)
 - [ ] `kind = "tx-script"` packages built with `from_parts` / a `build_tx_script_from_package`-style helper (not `from_package`/`unwrap_program`, which error/panic on them)
 - [ ] `prove_next_block()` called after `add_pending_executed_transaction()`
-- [ ] Post-block assertions read state from `mock_chain.committed_account(...)` (or `account.apply_delta(...)` is called when reusing an in-memory `Account` across transactions)
+- [ ] Post-block assertions read state from `mock_chain.committed_account(...)` (or `account.apply_patch(executed.account_patch())` is called when reusing an in-memory `Account` across transactions)
 - [ ] Notes added to `MockChainBuilder` via `add_output_note(RawOutputNote::Full(...))` before `build()`
 - [ ] Faucet set up before creating assets

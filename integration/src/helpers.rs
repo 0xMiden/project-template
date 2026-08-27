@@ -1,24 +1,28 @@
 //! Common helper functions for scripts and tests
 
-use std::{path::Path, sync::Arc};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+    sync::Arc,
+};
 
 use anyhow::{bail, Context, Result};
-use cargo_miden::run;
 use miden_client::{
     account::{
         component::{BasicWallet, InitStorageData, NoAuth},
         Account, AccountBuilder, AccountComponent, AccountType, StorageSlotName,
     },
-    auth::{AuthSchemeId, AuthSecretKey, AuthSingleSig},
+    auth::{Approver, AuthSchemeId, AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
     keystore::{FilesystemKeyStore, Keystore},
-    rpc::{Endpoint, GrpcClient},
+    rpc::Endpoint,
     utils::Deserializable,
     Client, Felt, Word,
 };
 use miden_client_sqlite_store::ClientBuilderSqliteExt;
 use miden_mast_package::Package;
-use rand::RngCore;
+use rand::Rng;
 
 /// Test setup configuration containing initialized client and keystore
 pub struct ClientSetup {
@@ -38,9 +42,8 @@ pub struct ClientSetup {
 /// or client building fails
 pub async fn setup_client() -> Result<ClientSetup> {
     // Initialize RPC connection
-    let endpoint = Endpoint::testnet();
+    let endpoint = Endpoint::devnet();
     let timeout_ms = 10_000;
-    let rpc_client = Arc::new(GrpcClient::new(&endpoint, timeout_ms));
 
     // Initialize keystore
     let keystore_path = std::path::PathBuf::from("../keystore");
@@ -51,10 +54,9 @@ pub async fn setup_client() -> Result<ClientSetup> {
     let store_path = std::path::PathBuf::from("../store.sqlite3");
 
     let client = ClientBuilder::new()
-        .rpc(rpc_client)
+        .grpc_client(&endpoint, Some(timeout_ms))
         .sqlite_store(store_path)
         .authenticator(keystore.clone())
-        .in_debug_mode(true.into())
         .build()
         .await
         .context("Failed to build Miden client")?;
@@ -74,30 +76,108 @@ pub async fn setup_client() -> Result<ClientSetup> {
 /// # Errors
 /// Returns an error if compilation fails or if the output is not in the expected format
 pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
+    const EXPECTED_CARGO_MIDEN_VERSION: &str = "cargo-miden 0.10.0-rc.1";
+
+    let cargo_home = env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
+        .context("CARGO_HOME and HOME are both unset; cannot locate the v0.16 compiler")?;
+    let cargo_miden = cargo_home
+        .join("miden-v16-0.10.0-rc.1")
+        .join("bin")
+        .join("cargo-miden");
+
+    if !cargo_miden.is_absolute() {
+        bail!(
+            "v0.16 cargo-miden path is not absolute: {}",
+            cargo_miden.display()
+        );
+    }
+    if !cargo_miden.is_file() {
+        bail!(
+            "required v0.16 cargo-miden executable does not exist at {}",
+            cargo_miden.display()
+        );
+    }
+
+    let version_output = Command::new(&cargo_miden)
+        .args(["miden", "--version"])
+        .output()
+        .with_context(|| {
+            format!(
+                "Failed to execute v0.16 compiler at {}",
+                cargo_miden.display()
+            )
+        })?;
+    let version_stdout = String::from_utf8(version_output.stdout)
+        .context("cargo-miden version output was not valid UTF-8")?;
+    let version_stdout = version_stdout.trim_end_matches(['\r', '\n']);
+    let version_stderr = String::from_utf8_lossy(&version_output.stderr);
+    if !version_output.status.success()
+        || version_stdout != EXPECTED_CARGO_MIDEN_VERSION
+        || !version_stderr.is_empty()
+    {
+        bail!(
+            "compiler at {} reported stdout {:?}, stderr {:?}, and status {}; expected exactly {:?}",
+            cargo_miden.display(),
+            version_stdout,
+            version_stderr,
+            version_output.status,
+            EXPECTED_CARGO_MIDEN_VERSION
+        );
+    }
+
     let profile = if release { "--release" } else { "--debug" };
-    let manifest_path = dir.join("Cargo.toml");
-    let manifest_arg = manifest_path.to_string_lossy();
+    let project_dir = dir
+        .canonicalize()
+        .with_context(|| format!("Failed to resolve project directory {}", dir.display()))?;
+    let manifest_path = project_dir.join("Cargo.toml");
 
-    let args = vec![
-        "cargo",
-        "miden",
-        "build",
-        profile,
-        "--manifest-path",
-        &manifest_arg,
-    ];
+    let output = Command::new(&cargo_miden)
+        .args(["miden", "build", profile, "--manifest-path"])
+        .arg(&manifest_path)
+        .env("CARGO_MIDEN", &cargo_miden)
+        .current_dir(&project_dir)
+        .output()
+        .context("Failed to compile project")?;
 
-    let output = run(args.into_iter().map(String::from))
-        .context("Failed to compile project")?
-        .context("Cargo miden build returned None")?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success() {
+        bail!(
+            "Failed to compile project {} (status {}):\nstdout:\n{}\nstderr:\n{}",
+            project_dir.display(),
+            output.status,
+            stdout,
+            stderr
+        );
+    }
 
-    let artifact_path = match output {
-        cargo_miden::CommandOutput::BuildCommandOutput { output } => output
-            .into_iter()
-            .next()
-            .context("cargo miden build produced no artifact")?,
-        other => bail!("Expected BuildCommandOutput, got {:?}", other),
+    let artifact_reports = stdout
+        .lines()
+        .chain(stderr.lines())
+        .filter_map(|line| line.trim().strip_prefix("Compiled "))
+        .collect::<Vec<_>>();
+    let [artifact_report] = artifact_reports.as_slice() else {
+        bail!(
+            "cargo-miden must report exactly one compiled artifact, but reported {}:\nstdout:\n{}\nstderr:\n{}",
+            artifact_reports.len(),
+            stdout,
+            stderr
+        );
     };
+    let artifact_path = PathBuf::from(artifact_report);
+    let artifact_path = if artifact_path.is_absolute() {
+        artifact_path
+    } else {
+        project_dir.join(artifact_path)
+    };
+    if !artifact_path.is_file() {
+        bail!(
+            "cargo-miden reported an artifact that is not a regular file: {}",
+            artifact_path.display()
+        );
+    }
 
     let package_bytes = std::fs::read(&artifact_path).context(format!(
         "Failed to read compiled package from {}",
@@ -121,7 +201,7 @@ pub fn counter_storage_slot() -> Result<StorageSlotName> {
 
 /// Configuration for creating an account with a custom component
 pub struct AccountCreationConfig {
-    /// The account type to create. In protocol v0.15 this also encodes the
+    /// The account type to create. This also encodes the
     /// storage visibility (`AccountType::Public` / `AccountType::Private`).
     pub account_type: AccountType,
     /// Initial component storage data keyed by storage slot schema.
@@ -164,7 +244,7 @@ pub async fn create_account_from_package(
     let account = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
         .with_component(account_component)
-        .with_auth_component(NoAuth)
+        .with_component(NoAuth)
         .build()
         .context("Failed to build account")?;
 
@@ -202,10 +282,10 @@ pub async fn create_basic_wallet_account(
 
     let builder = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
-        .with_auth_component(AuthSingleSig::new(
+        .with_component(AuthSingleSig::new(Approver::new(
             key_pair.public_key().to_commitment(),
             AuthSchemeId::Falcon512Poseidon2,
-        ))
+        )))
         .with_component(BasicWallet);
 
     let account = builder

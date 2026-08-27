@@ -83,7 +83,9 @@ struct CounterContractStorage {
 // 2. API trait — defines the exported interface.
 #[component]
 trait CounterContract {
+    #[account_procedure]
     fn get_count(&self) -> Felt;
+    #[account_procedure]
     fn increment_count(&mut self) -> Felt;
 }
 
@@ -103,7 +105,7 @@ impl CounterContract for CounterContractStorage {
 }
 ```
 
-If you need custom keys or values, implement `WordKey` / `WordValue` by converting to and from a single `Word`.
+Methods that must be callable from notes, transaction scripts, foreign procedure invocation, or sibling components need `#[account_procedure]` on the `#[component]` trait declaration. Unmarked methods still compile but are not account procedures. If you need custom keys or values, implement `WordKey` / `WordValue` by converting to and from a single `Word`.
 
 ## P5: Storage Slot Naming Convention
 
@@ -127,7 +129,7 @@ Storage slot names follow a strict pattern. Getting it wrong often returns the d
 
 The integration code depends on this exact name. In `integration/src/helpers.rs`, `counter_storage_slot()` builds it via `StorageSlotName::new("counter_account::counter_contract::count_map")`; a mismatch there reads the default value instead of the seeded one.
 
-**Caveat (toolchain-version dependent)**: This naming is a property of the Rust SDK contract macros, which live in the `miden-base-macros` crate (0.13.0, part of the Rust SDK family alongside `miden` and `miden-base-sys`, all 0.13.0; the separate compiler / `cargo-miden` workspace is versioned 0.9.0). Do not conflate these with the protocol/network version (v0.15). The slot-naming algorithm — `package_name::snake_case(interface_segment)::field`, with non-`[A-Za-z0-9_]` mapped to `_` and `@version` stripped — is stable, but verify against your installed toolchain rather than assuming a protocol version.
+**Caveat (toolchain-version dependent)**: This naming is a property of the Rust SDK contract macros. This project pins guest `miden = "=0.14.0-rc.1"` and the compiler/build-support source to immutable revision `2a5ebf830c910aa5f7bf53ee4df398915ab12f7a`; its isolated compiler reports `cargo-miden 0.10.0-rc.1`. Those contract-build versions are a separate line from the host's protocol `0.16.0-rc.6` and client `0.16.0-rc.2`. The slot-naming algorithm — `package_name::snake_case(interface_segment)::field`, with non-`[A-Za-z0-9_]` mapped to `_` and `@version` stripped — is stable, but verify against the pinned guest/compiler source rather than assuming a network version.
 
 ## P6: No-std Environment
 
@@ -167,6 +169,8 @@ let asset_key = asset.key;
 Use `asset.key` and `asset.value` (or protocol helpers) rather than reconstructing an asset from raw `asset.inner[...]` offsets.
 
 **SDK vs protocol `Asset`**: the two-word `{key, value}` form is the Rust SDK ABI type. At the protocol layer, `Asset` is an enum `{ Fungible, NonFungible }`, and the vault words are obtained via `to_key_word()` / `to_value_word()`. Reading the fungible amount from `value[0]` is correct on both sides.
+
+**Identity rename trap**: do not blindly rename protocol asset identifiers. In the current protocol, `AssetId` is the per-asset vault identity, while `AssetClass` distinguishes assets issued by the same faucet. Classify each use by meaning before changing it; compilation alone cannot detect a semantic swap.
 
 ## P8: Build Recipients with `note::build_recipient`
 
@@ -220,7 +224,7 @@ fn p2id_note_root() -> Word {
 
 **Risk**: If miden-standards updates the P2ID script, any hardcoded digest becomes invalid and withdrawals silently fail.
 
-**NoteType for P2ID**: P2ID output notes created in contract code are constructed with `NoteType::from(felt!(...))` — `felt!(0)` for private, `felt!(1)` for public (see P10). In v0.15 the kernel rejects any note type other than `0` (private) or `1` (public) with `ERR_NOTE_INVALID_TYPE`. A common working pattern reads the note type from an input note's storage and forwards it through `NoteType::from(note_type)`.
+**NoteType for P2ID**: P2ID output notes created in contract code are constructed with `NoteType::from(felt!(...))` — `felt!(0)` for private, `felt!(1)` for public (see P10). The kernel rejects any note type other than `0` (private) or `1` (public) with `ERR_NOTE_INVALID_TYPE`. A common working pattern reads the note type from an input note's storage and forwards it through `NoteType::from(note_type)`.
 
 ## P10: NoteType Variants Unavailable in Compiler SDK
 
@@ -250,3 +254,17 @@ See `contracts/increment-note/src/lib.rs` for the wrapper pattern: the note decl
 **Severity**: Low -- causes incorrect architecture
 
 Note inputs (the Felt data the `#[note]` macro deserializes into `self`, read at runtime via `active_note::get_storage()`) are baked at note creation time and cannot be modified after creation. Design the typed note struct's field set and field order carefully before deployment; any later change is a breaking change for existing notes.
+
+## P13: Compiler and Package-Cache Provenance
+
+**Severity**: High -- the wrong compiler can build the wrong protocol line or leave stale dependency metadata
+
+This project uses the isolated `cargo-miden 0.10.0-rc.1` installed from exact compiler revision `2a5ebf830c910aa5f7bf53ee4df398915ab12f7a`, not an ambient Cargo subcommand. For direct builds, hooks, tests, plain Cargo, and IDE analysis, derive the binary beneath `${CARGO_HOME:-$HOME/.cargo}/miden-v16-0.10.0-rc.1/bin/cargo-miden`, require its absolute path and exact version, and pass that path through `CARGO_MIDEN` where the build-support wrapper may launch it.
+
+Every contract crate pins `miden = "=0.14.0-rc.1"` and `miden-sdk-build-script-support` to that same immutable revision, and its `build.rs` calls `prepare_package_cache()`. Use a checkout-private `CARGO_TARGET_DIR`, because Cargo may reuse build-script output between same-name crates that share a target. Never point `MIDENC_PACKAGE_CACHE` at a manually prepared directory to bypass staging; the helper owns its content-addressed generations and must propagate nested build failures.
+
+## P14: Absolute Account Updates Use Patches
+
+**Severity**: High -- confusing relative summaries with absolute updates can silently produce the wrong state transition
+
+An `ExecutedTransaction` exposes an absolute `AccountPatch`; update an in-memory account with `account.apply_patch(executed.account_patch())?`. `TransactionSummary::account_delta()` deliberately remains a relative `AccountDelta` used to describe the transaction summary. Do not substitute that relative summary for an absolute account update.

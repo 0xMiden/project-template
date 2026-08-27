@@ -8,7 +8,26 @@ Before getting started, ensure you have the following prerequisites:
 
 1. **Install Rust** - Make sure you have Rust installed on your system. If not, install it from [rustup.rs](https://rustup.rs/)
 
-2. **Install midenup toolchain** - Follow the installation instructions at: <https://github.com/0xMiden/midenup>
+2. **Install the pinned Miden v0.16 contract toolchain** - The v0.16 midenup channel does not
+   provision the source-aligned compiler required by this project. Install the immutable compiler
+   revision into an isolated Cargo root so it does not replace another `cargo-miden` installation:
+
+   ```bash
+   MIDEN_CARGO_HOME="${CARGO_HOME:-${HOME:?HOME must be set}/.cargo}"
+   MIDEN_V16_TOOL_ROOT="$MIDEN_CARGO_HOME/miden-v16-0.10.0-rc.1"
+   COMPILER_PIPELINE_COMMIT=2a5ebf830c910aa5f7bf53ee4df398915ab12f7a
+
+   cargo install cargo-miden --git https://github.com/0xMiden/compiler \
+     --rev "$COMPILER_PIPELINE_COMMIT" --locked --root "$MIDEN_V16_TOOL_ROOT"
+   cargo install midenc --git https://github.com/0xMiden/compiler \
+     --rev "$COMPILER_PIPELINE_COMMIT" --locked --root "$MIDEN_V16_TOOL_ROOT"
+
+   CARGO_MIDEN_BIN="$MIDEN_V16_TOOL_ROOT/bin/cargo-miden"
+   test "$("$CARGO_MIDEN_BIN" miden --version)" = 'cargo-miden 0.10.0-rc.1'
+   test "$("$MIDEN_V16_TOOL_ROOT/bin/midenc" --version)" = 'midenc 0.10.0-rc.1'
+   ```
+
+   Re-derive `MIDEN_CARGO_HOME`, `MIDEN_V16_TOOL_ROOT`, and `CARGO_MIDEN_BIN` in each new shell.
 
 ## **Structure**
 
@@ -20,7 +39,6 @@ miden-project/
 ├── integration/                 # Integration crate (scripts + tests)
 │   ├── src/
 │   │   ├── bin/                 # Rust binaries for on-chain interactions
-│   │   ├── config.rs            # Temporary config file (do not modify!)
 │   │   ├── helpers.rs           # Temporary helper file (do not modify!)
 │   │   └── lib.rs
 │   └── tests/                   # Test files
@@ -58,7 +76,7 @@ This structure provides flexibility as your application grows, allowing you to a
 To create a new contract crate, run the following command from the workspace root:
 
 ```bash
-miden new --account contracts/my-account
+"$CARGO_MIDEN_BIN" miden new --account contracts/my-account
 ```
 
 This will scaffold a new contract crate inside the `contracts/` directory with all the necessary boilerplate.
@@ -85,28 +103,58 @@ Tests are located in `integration/tests/`. To add a new test:
 
 ```bash
 # Compile a specific contract
-miden build --manifest-path contracts/counter-account/Cargo.toml
+"$CARGO_MIDEN_BIN" miden build \
+  --manifest-path contracts/counter-account/Cargo.toml --release
 
 # Or navigate to the contract directory
 cd contracts/counter-account
-miden build
+"$CARGO_MIDEN_BIN" miden build --release
 ```
+
+The automatic post-edit hook derives the same isolated binary from
+`${CARGO_HOME:-$HOME/.cargo}/miden-v16-0.10.0-rc.1`; it does not select a compiler from ambient
+`PATH` and rejects any version other than `cargo-miden 0.10.0-rc.1`.
+
+### Plain Cargo Check and IDE Analysis
+
+Each contract has a three-line `build.rs` that calls
+`miden_sdk_build_script_support::prepare_package_cache()`. For plain `cargo check` or IDE analysis,
+select the verified absolute compiler with `CARGO_MIDEN` and use a checkout-private target directory.
+Run Cargo from the contract directory so its `.cargo/config.toml` supplies the Miden target settings:
+
+```bash
+PROJECT_ROOT="$PWD"
+PLAIN_CARGO_TARGET="$PROJECT_ROOT/target/plain-cargo-v16"
+(
+  cd contracts/counter-account
+  env -u MIDENC_PACKAGE_CACHE \
+    CARGO_MIDEN="$CARGO_MIDEN_BIN" \
+    CARGO_TARGET_DIR="$PLAIN_CARGO_TARGET" \
+    cargo check --release
+)
+```
+
+Configure an IDE with the same absolute `CARGO_MIDEN` and checkout-private `CARGO_TARGET_DIR`.
+Do not set `MIDENC_PACKAGE_CACHE` manually; the build-support wrapper stages and exports it.
 
 ### Run a Binary
 
 ```bash
 # Navigate to integration crate and run a binary
 cd integration
-cargo run --bin increment_count
+cargo run --bin increment_count --release
 ```
+
+`increment_count` temporarily targets DevNet at `https://rpc.devnet.miden.io` while Testnet is
+being upgraded. Running it creates public DevNet accounts, adds a new sender key to the existing
+`keystore/`, and submits transactions. Returned transaction IDs prove submission, not finality.
 
 ### Run Tests
 
 ```bash
-# Navigate to integration crate and run tests
-cd integration
-cargo test                      # Run all tests
-cargo test counter_test         # Run specific test file
+# Run from the workspace root
+cargo test -p integration --release                 # Run all tests
+cargo test -p integration --release counter_test    # Run the counter test
 ```
 
 ## **Extending the Workspace**

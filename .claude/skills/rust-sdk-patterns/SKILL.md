@@ -29,7 +29,9 @@ struct CounterContractStorage {
 
 #[component]
 trait CounterContract {
+    #[account_procedure]
     fn get_count(&self) -> Felt;
+    #[account_procedure]
     fn increment_count(&mut self) -> Felt;
 }
 
@@ -50,11 +52,11 @@ impl CounterContract for CounterContractStorage {
 }
 ```
 
-Only the trait's methods are exported to WIT. Inherent (`impl CounterContractStorage`) methods stay private to the contract — use them for helpers like key derivation.
+Only the trait's methods are exported to WIT. Mark every method that must be callable from notes, transaction scripts, foreign procedure invocation, or sibling components with `#[account_procedure]` on the trait declaration; unmarked methods are not account procedures. Inherent (`impl CounterContractStorage`) methods stay private to the contract — use them for helpers like key derivation.
 
 See [counter-account/src/lib.rs](../../../contracts/counter-account/src/lib.rs) for the complete working example demonstrating the three-part pattern, typed `StorageMap<Word, Felt>`, `get()`/`set()`, and felt arithmetic.
 
-**Project metadata for accounts:** See [counter-account/miden-project.toml](../../../contracts/counter-account/miden-project.toml) for `[lib] kind = "account-component"`, the `namespace` (`miden:counter-account/counter-contract@0.1.0`), and `supported-types` under `[package.metadata.miden]`. The `Cargo.toml` (see [counter-account/Cargo.toml](../../../contracts/counter-account/Cargo.toml)) only needs `crate-type = ["cdylib"]` and the `miden` dependency.
+**Project metadata for accounts:** See [counter-account/miden-project.toml](../../../contracts/counter-account/miden-project.toml) for `[lib] path = "src/lib.rs"`, `kind = "account-component"`, the `namespace` (`miden:counter-account/counter-contract@0.1.0`), and `supported-types` under `[package.metadata.miden]`. The [counter-account/Cargo.toml](../../../contracts/counter-account/Cargo.toml) retains `crate-type = ["cdylib"]`, pins guest SDK `miden = "=0.14.0-rc.1"` to compiler revision `2a5ebf830c910aa5f7bf53ee4df398915ab12f7a`, and pins `miden-sdk-build-script-support` to the same revision under `[build-dependencies]`. Its `build.rs` calls `miden_sdk_build_script_support::prepare_package_cache();`.
 
 ### Note Script (`#[note]` / `#[note_script]`)
 Executes when a note is consumed by an account. Can call component methods on the consuming account.
@@ -89,7 +91,7 @@ impl IncrementNote {
 
 See [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) for the working example demonstrating `#[note]`, `#[note_script]`, the `#[account(...)]` wrapper, and a cross-component call.
 
-**Project metadata for notes:** See [increment-note/miden-project.toml](../../../contracts/increment-note/miden-project.toml) for `[lib] kind = "note"`, the `namespace` (`miden:increment-note/miden-increment-note@0.1.0`), the path dependency on the called component (`counter-account = { path = "../counter-account" }`), and the cross-component `[package.metadata.miden.dependencies]` WIT entry.
+**Project metadata for notes:** See [increment-note/miden-project.toml](../../../contracts/increment-note/miden-project.toml) for `[lib] kind = "note"`, the `namespace` (`miden:increment-note/miden-increment-note@0.1.0`), and the path dependency on the called component (`counter-account = { path = "../counter-account" }`).
 
 ### Transaction Script (`#[tx_script]`)
 One-off logic executed in the context of an account. Used for initialization, admin operations, etc.
@@ -136,13 +138,13 @@ Example: package `counter-account` + `namespace = "miden:counter-account/counter
 
 | Module | Key Functions | Purpose |
 |--------|--------------|---------|
-| `native_account::` | `add_asset(Asset) -> Word`, `remove_asset(Asset) -> Word`, `incr_nonce() -> Felt`, `get_id() -> AccountId` | Modify current account vault/nonce |
-| `active_account::` | `get_id() -> AccountId`, `get_balance(Word) -> Felt` | Query current account (`get_balance` takes the asset key word, not an AccountId) |
-| `active_note::` | `get_storage() -> Vec<Felt>`, `get_assets() -> Vec<Asset>`, `get_sender() -> AccountId` | Query note being consumed |
+| `native_account::` | `add_asset(Asset) -> Word`, `remove_asset(Asset) -> Word`, `incr_nonce() -> Nonce`, `get_id() -> AccountId` | Modify current account vault/nonce |
+| `active_account::` | `get_id() -> AccountId`, `get_asset(Word) -> Word`, `has_asset(Word) -> bool` | Query current account and its current vault |
+| `active_note::` | `get_storage() -> Vec<Felt>`, `get_initial_assets() -> Vec<Asset>`, `get_sender() -> AccountId` | Query the note being consumed and its creation-time assets |
 | `note::` | `build_recipient(Word, Word, Vec<Felt>) -> Recipient` | Build note recipients from serial number, script root, and note storage |
 | `output_note::` | `create(Tag, NoteType, Recipient) -> NoteIdx`, `add_asset(Asset, NoteIdx)` | Create output notes |
-| `faucet::` | `create_fungible_asset(Felt) -> Asset`, `mint(Asset)`, `burn(Asset)` | Asset minting |
-| `tx::` | `get_block_number() -> Felt`, `get_block_timestamp() -> Felt` | Transaction context |
+| `faucet::` | `mint(Asset)`, `burn(Asset)` | Mint or burn a pre-built asset; in-transaction asset construction is unavailable |
+| `tx::` | `get_block_number() -> BlockNumber`, `get_block_timestamp() -> u32` | Transaction context |
 | Intrinsics | `assert(Felt)`, `assertz(Felt)`, `assert_eq(Felt, Felt)` | Validation (`assert` fails unless the felt equals 1; `assertz` fails unless it equals 0) |
 
 ## Asset Handling
@@ -186,14 +188,13 @@ Because a note script cannot call `native_account::*` (pitfall P11), P2ID creati
 
 ## Cross-Component Dependencies
 
-To call another component's methods from a note or tx script, declare the dependency in your `miden-project.toml` in **two places**:
+To call another component's methods from a note or tx script, declare the component under `[dependencies]` in `miden-project.toml`: `counter-account = { path = "../counter-account" }`.
 
-- `[dependencies]` — a normal path (or registry) dependency on the component crate: `counter-account = { path = "../counter-account" }`.
-- `[package.metadata.miden.dependencies]` — the generated WIT for the component: `counter-account = { wit = "../counter-account/target/generated-wit/" }`. The WIT is produced by building the dependency component first.
+WIT is embedded in its compiled package, so no `[package.metadata.miden.dependencies]` entry is needed. A leftover `wit` key is an error for a dependency package that embeds WIT; it survives only as an escape hatch for dependency packages that do not embed WIT.
 
-See [increment-note/miden-project.toml](../../../contracts/increment-note/miden-project.toml) for a working example showing both sections.
+See [increment-note/miden-project.toml](../../../contracts/increment-note/miden-project.toml) for the working ordinary path dependency.
 
-Then expose the dependency's methods on the consuming account by declaring an `#[account(package::Interface)]` wrapper (`#[account(counter_account::CounterContract)] pub struct Wallet;`) and calling methods on the injected `account` parameter. The package name is the dependency's Rust-style name (`-` replaced with `_`, so `counter-account` → `counter_account`) and `Interface` is its exported WIT interface in UpperCamelCase (`CounterContract`). See [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs).
+Then expose the dependency's methods on the consuming account by declaring an `#[account(package::Interface)]` wrapper (`#[account(counter_account::CounterContract)] pub struct Wallet;`) and calling methods on the injected `account` parameter. The package name is the dependency's Rust-style name (`-` replaced with `_`, so `counter-account` → `counter_account`) and `Interface` is its exported WIT interface in UpperCamelCase (`CounterContract`). The macro generates one trait per referenced interface and implements it for the wrapper. Same-module note and transaction-script entrypoints see that generated trait automatically; callers in another module must import it. Give the wrapper a name different from every generated trait, and use UFCS when multiple generated traits expose the same method name. See [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs).
 
 ## Common Type Conversions
 
@@ -230,17 +231,37 @@ extern crate alloc;
 use alloc::vec::Vec;
 ```
 
+## Contract Build Support
+
+Every contract crate uses the guest SDK at exact revision `2a5ebf830c910aa5f7bf53ee4df398915ab12f7a` and version `=0.14.0-rc.1`. Add `miden-sdk-build-script-support` from that same immutable revision under `[build-dependencies]`, add a `build.rs` that calls `miden_sdk_build_script_support::prepare_package_cache();`, and set `[lib] path = "src/lib.rs"` in `miden-project.toml`.
+
+```toml
+[dependencies]
+miden = { version = "=0.14.0-rc.1", git = "https://github.com/0xMiden/compiler", rev = "2a5ebf830c910aa5f7bf53ee4df398915ab12f7a" }
+
+[build-dependencies]
+miden-sdk-build-script-support = { git = "https://github.com/0xMiden/compiler", rev = "2a5ebf830c910aa5f7bf53ee4df398915ab12f7a" }
+```
+
+```rust
+fn main() {
+    miden_sdk_build_script_support::prepare_package_cache();
+}
+```
+
+For plain Cargo and IDE analysis, set `CARGO_MIDEN` to the verified absolute `cargo-miden 0.10.0-rc.1` binary installed from that revision and use a checkout-private `CARGO_TARGET_DIR`. Do not manually set `MIDENC_PACKAGE_CACHE`; the build-support wrapper owns its content-addressed package-cache generations.
+
 ## Cross-Component Note Pattern
 
 A note script reads from `active_note::*` and forwards work to a public account-component method through the `#[account(...)]` wrapper. This is the canonical pattern for any note that updates account state, because note scripts cannot call `native_account::*` directly (see `rust-sdk-pitfalls` skill, P11).
 
 The `#[note]` macro deserializes the note's inputs into the typed note struct, so serialized note storage is turned into typed fields before the script runs. The `#[note_script]` method receives the deserialized note as `self` (by value) and never indexes a raw Felt slice manually. Alongside the required `Word` arg, the method may optionally accept an `#[account(...)]` wrapper reference (`&Wallet` or `&mut Wallet`). See [compiler/sdk/base-macros/src/lib.rs](https://github.com/0xMiden/compiler/blob/main/sdk/base-macros/src/lib.rs) for the macro contract and [compiler/sdk/base-macros/src/note.rs](https://github.com/0xMiden/compiler/blob/main/sdk/base-macros/src/note.rs) for the generated deserialization (each named field is read via `<T as miden::felt_repr::FromFeltRepr>::from_felt_repr(...)` and EOF is asserted at the end).
 
-Supported field types include `Felt`, the unsigned integer scalars (`u64`, `u32`, `u8`), `bool`, `Option<T>`, and `Vec<T>` via the `FromFeltRepr` trait (`compiler/sdk/field-repr/repr/src/lib.rs`), plus any user type that opts in with `#[derive(FromFeltRepr)]` (this is how `AccountId` supports the macro — see `compiler/sdk/base-sys/src/bindings/types.rs`). Do **not** use `Asset` or `Word` directly as note struct fields; those types do not currently derive `FromFeltRepr`. If you need asset-shaped data inside the note, flatten it into supported scalar fields and reconstruct inside the script, or keep it on the side as a separate `active_note::get_assets()` read.
+Supported field types include `Felt`, the unsigned integer scalars (`u64`, `u32`, `u8`), `bool`, `Option<T>`, and `Vec<T>` via the `FromFeltRepr` trait (`compiler/sdk/field-repr/repr/src/lib.rs`), plus any user type that opts in with `#[derive(FromFeltRepr)]` (this is how `AccountId` supports the macro — see `compiler/sdk/base-sys/src/bindings/types.rs`). Do **not** use `Asset` or `Word` directly as note struct fields; those types do not currently derive `FromFeltRepr`. If you need asset-shaped data inside the note, flatten it into supported scalar fields and reconstruct inside the script, or keep it on the side as a separate `active_note::get_initial_assets()` read.
 
 For the Cargo.toml / `miden-project.toml` wiring (cross-component dependencies + `#[account(...)]` wrapper), see "Cross-Component Dependencies" above. See [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) for the project-template's local example of the `#[note] struct + #[note] impl` macro form.
 
-**Storage-free case** (unit struct, calls the account wrapper): declare a unit struct (`#[note] struct IncrementNote;`). The script receives the `#[account(...)]` wrapper and calls component methods on it — the counter's [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) is exactly this shape (`account.get_count()` / `account.increment_count()`). For a note that forwards assets, read `active_note::get_sender()` and iterate `active_note::get_assets()`, calling the component method per asset through the wrapper. The macro still generates the deserialization wrapper; for a unit struct it only asserts the note-input Felt slice is empty.
+**Storage-free case** (unit struct, calls the account wrapper): declare a unit struct (`#[note] struct IncrementNote;`). The script receives the `#[account(...)]` wrapper and calls component methods on it — the counter's [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) is exactly this shape (`account.get_count()` / `account.increment_count()`). For a note that forwards assets, read `active_note::get_sender()` and iterate `active_note::get_initial_assets()`, calling the component method per asset through the wrapper. The macro still generates the deserialization wrapper; for a unit struct it only asserts the note-input Felt slice is empty.
 
 **Typed-storage case** (note carries scripted data): declare named fields on the note struct. The macro deserializes them in declaration order, and the script accesses them via `self.<field>`. Illustrative shape:
 
@@ -278,11 +299,12 @@ Component side: a trait method (e.g. `deposit`) validates the deposit, updates s
 ## Validation Checklist
 
 - [ ] `#![no_std]` and `#![feature(alloc_error_handler)]` at top of every contract
-- [ ] Account components use the three-part pattern: `#[component_storage]` struct + `#[component]` trait + `#[component]` impl (never `#[component]` on a struct)
+- [ ] Account components use the three-part pattern: `#[component_storage]` struct + `#[component]` trait + `#[component]` impl (never `#[component]` on a struct), with `#[account_procedure]` on every trait method that must be callable as an account procedure
 - [ ] `crate-type = ["cdylib"]` in `Cargo.toml`
-- [ ] Correct `[lib] kind` in `miden-project.toml` (`account-component` / `note` / `tx-script`) with the matching `namespace`
+- [ ] Guest `miden = "=0.14.0-rc.1"`, build-support dependency, and `build.rs` all use compiler revision `2a5ebf830c910aa5f7bf53ee4df398915ab12f7a`
+- [ ] Correct `[lib] path = "src/lib.rs"` and `kind` in `miden-project.toml` (`account-component` / `note` / `tx-script`) with the matching `namespace`
 - [ ] Typed storage uses `StorageValue<T>` / `StorageMap<K, V>` with `get()` / `set()`; slot names derive from `<package>::<namespace-interface>::<field>`
 - [ ] Notes/tx-scripts that call a component declare an `#[account(package::Interface)]` wrapper and call methods on the injected `account`
-- [ ] Cross-component deps declared in `miden-project.toml` under both `[dependencies]` (path) and `[package.metadata.miden.dependencies]` (wit)
+- [ ] Cross-component deps declared under `[dependencies]` in `miden-project.toml` (no `wit` key: WIT is embedded in the compiled package)
 - [ ] Felt arithmetic validated before subtraction (see rust-sdk-pitfalls skill)
 - [ ] Felt comparisons use `.as_canonical_u64()` (see rust-sdk-pitfalls skill)
