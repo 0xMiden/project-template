@@ -162,13 +162,13 @@ pub struct Asset {
 // Reading the amount from a fungible asset
 let amount = asset.value[0];
 
-// Persisting or comparing the asset class
+// Persisting or comparing the asset ID / vault identity
 let asset_key = asset.key;
 ```
 
 Use `asset.key` and `asset.value` (or protocol helpers) rather than reconstructing an asset from raw `asset.inner[...]` offsets.
 
-**SDK vs protocol `Asset`**: the two-word `{key, value}` form is the Rust SDK ABI type. At the protocol layer, `Asset` is an enum `{ Fungible, NonFungible }`, and the vault words are obtained via `to_key_word()` / `to_value_word()`. Reading the fungible amount from `value[0]` is correct on both sides.
+**SDK vs protocol `Asset`**: the two-word `{key, value}` form is the Rust SDK ABI type, where `key` is the asset ID / vault identity word. At the protocol layer, `Asset` is an enum `{ Fungible, NonFungible }`, and the vault words are obtained via `to_id_word()` / `to_value_word()`. Reading the fungible amount from `value[0]` is correct on both sides.
 
 **Identity rename trap**: do not blindly rename protocol asset identifiers. In the current protocol, `AssetId` is the per-asset vault identity, while `AssetClass` distinguishes assets issued by the same faucet. Classify each use by meaning before changing it; compilation alone cannot detect a semantic swap.
 

@@ -151,7 +151,7 @@ Example: package `counter-account` + `namespace = "miden:counter-account/counter
 
 `Asset` is a two-word value (`key` + `value`):
 
-**Constructor**: `Asset::new(key, value)` builds an Asset from its vault key word and value word (the arguments are `impl Into<Word>`, so e.g. `Asset::new(key_word, value_word)` or from `[Felt; 4]`).
+**Constructor**: `Asset::new(key, value)` builds an Asset from its asset ID word and value word (the arguments are `impl Into<Word>`, so e.g. `Asset::new(id_word, value_word)` or from `[Felt; 4]`).
 
 ```rust
 pub struct Asset {
@@ -160,13 +160,13 @@ pub struct Asset {
 }
 ```
 
-For fungible assets, the amount lives in `asset.value[0]`. The asset class / vault identity lives in `asset.key`.
+For fungible assets, the amount lives in `asset.value[0]`. The asset ID / vault identity word lives in `asset.key`; `AssetClass` is the discriminator between assets issued by one faucet.
 
 ```rust
 // Access fungible amount
 let amount = asset.value[0];
 
-// Keep the asset key if you need to persist or compare the asset class
+// Keep the asset key if you need to persist or compare the asset ID / vault identity
 let asset_key = asset.key;
 
 // Add asset to account vault (only from component methods, not note scripts — see pitfall P11)
