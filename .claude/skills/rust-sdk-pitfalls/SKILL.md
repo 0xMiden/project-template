@@ -44,18 +44,21 @@ if balance.as_canonical_u64() > threshold.as_canonical_u64() { ... }
 
 **Rule**: For quantity/business logic, ALWAYS convert to `.as_canonical_u64()` before using comparison operators.
 
-## P3: Direct Call Boundary Passes At Most 16 Stack Felts (4 Words)
+## P3: Canonical ABI Tupling and the Direct FPI 16-Felt Budget
 
-**Severity**: High — exceeding the 16-felt call boundary is a compile error
+**Severity**: High — conflating argument tupling with the direct-call budget gives the wrong result
 
-A direct cross-context / export / FPI call passes its parameters on the MASM operand stack, whose addressable window is 16 felts (4 Words, counting the canonical-ABI result pointer when present). Passing more than 16 flat felts across that boundary is a **compilation error**: after expanding 64-bit values and any result pointer, the flattened parameters must fit in 16 operand-stack felts. (Indirection for larger payloads via the advice provider is planned but not yet implemented, so today the limit is hard.)
+Canonical ABI decides whether to tuple the **parameters** from their flat-value count and felt width. If either exceeds 16, it replaces the parameter list with one argument pointer. For an FPI import, an indirect-result pointer is appended only afterward. `plan_fpi_call` then derives the argument-pointer path from the parameter **count** and includes any result pointer in the direct-call felt total. Consequently, parameter-width-only tupling can still be diagnosed as an over-budget direct FPI call, and exactly 16 direct parameter felts plus an indirect-result pointer form a rejected 17-felt call. More than 16 flat parameters use the supported argument-pointer path rather than failing merely because the direct stack window is 16; the FPI executor's separate input/output caps still apply.
+
+See frozen compiler sources `frontend/wasm/src/component/flat.rs:261-288` and `frontend/wasm/src/component/lower_imports.rs:330-351` at tag `sdk/v0.14.0-rc.1`.
 
 ```rust
-// COMPILE ERROR — flattens past 16 felts
-fn process(a: Word, b: Word, c: Word, d: Word, e: Word) { ... }
+// REJECTED for an FPI import: 16 direct parameter felts plus the
+// indirect result pointer make a 17-felt direct call.
+fn process(a0: Felt, /* ... */, a15: Felt) -> Word { ... }
 
-// OK — keep signatures small, or pass aggregates by reference so each lowers to a pointer
-fn process(a: &Word, b: &Word, c: &Word, d: &Word, e: &Word) { ... }
+// More than 16 flat parameters trigger canonical-ABI argument tupling;
+// they do not fail merely because the direct stack window is 16.
 ```
 
 ## P4: Storage API Is Typed
