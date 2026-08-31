@@ -21,7 +21,7 @@ Key properties:
 | Transactions involve sender + receiver | Transactions involve **one account only** |
 | Public state by default | **Private by default** |
 | Validators execute transactions | **Client executes and proves** locally |
-| EVM-style gas metering | Verification fees are chain-configured in v0.16; a zero base fee charges nothing, while computational bounds still apply |
+| Gas metering | No gas (computational bounds exist) |
 | Synchronous contract calls | **Asynchronous** communication via notes |
 | Accounts are balances + storage | Accounts are **full smart contracts** with code, storage, and vault |
 
@@ -40,7 +40,7 @@ Accounts are composed from **components** — reusable Rust modules annotated wi
 ### Notes
 Notes are **UTXO-like messages** for asynchronous inter-account communication. A note contains:
 - **Script** — Logic that executes when the note is consumed
-- **Storage** — Data accessible to the script during execution (`NoteStorage`, backed by `Vec<Felt>`)
+- **Inputs** — Data passed to the script (Vec<Felt>)
 - **Assets** — Fungible/non-fungible tokens attached to the note
 - **Metadata** — Sender, tag, note type (public/private)
 
@@ -53,8 +53,6 @@ A transaction is a **single-account state transition** with 4 phases:
 3. Update account state (storage, vault, nonce)
 4. Produce output notes (for other accounts to consume later)
 
-The account's authentication procedure authorizes the transition and handles any v0.16 verification fee. The fee is derived from estimated verification cycles and the reference block's `verification_base_fee`. A zero base fee creates no fee note and needs no conversion information. On a fee-charging chain the vault must hold the payment asset: signature auth can commit explicit fee-conversion information, while `NoAuth` pays only in the native fee asset at 1/1 and rejects explicit conversion information.
-
 **Important**: A two-party transfer (Alice sends Bob tokens) requires TWO transactions:
 1. Alice's transaction creates a P2ID note with tokens attached
 2. Bob's transaction consumes that note, receiving the tokens
@@ -64,13 +62,12 @@ The account's authentication procedure authorizes the transition and handles any
 - **Fungible**: asset amount lives in `asset.value[0]`
 - **Non-fungible**: Unique token tied to a faucet account
 - Assets live in account **vaults** and move between accounts via notes
-- Issued by **faucet accounts**; faucet components define the asset class and their mint/burn procedures operate on assets
+- Created by **faucet accounts** using `faucet::create_fungible_asset()` or `faucet::mint()`
 
 ### Felt and Word
 - **Felt**: Field element in the Goldilocks prime field (p = 2^64 - 2^32 + 1). The fundamental data unit.
 - **Word**: Array of 4 Felts (32 bytes). Used for cryptographic hashes, storage keys, account IDs.
-- **Felt constructors** (Rust `miden_field::Felt` — the same type used host-side in clients/tests *and* guest-side inside `#[component]`/`#[note]` contract code, which re-exports it): `Felt::new(u64)` is **fallible** — it returns `Result<Felt, FeltFromIntError>` and rejects out-of-range values (delegates to `from_canonical_checked`), so callers must `?`/match it (guest code typically `Felt::new(0).unwrap()`). `Felt::new_unchecked(u64)` is the raw, non-reducing constructor (any `u64`, no validation). Always-succeed constructors (return a bare `Felt`): `Felt::from_u8` / `from_u16` / `from_u32`. Non-panicking but fallible: `Felt::from_canonical_checked(u64) -> Option<Felt>` (returns `None` when out of range).
-- **Word constructors**: `Word::new`, `Word::from([u32; 4])`, `Word::from([Felt; 4])`, `Word::try_from([u64; 4])`
+- **Current constructors**: `Felt::new`, `Felt::from_u8` / `from_u16` / `from_u32`, `Felt::from_canonical_checked`, `Word::new`, `Word::from([u32; 4])`, `Word::from([Felt; 4])`, `Word::try_from([u64; 4])`
 - **Current accessors**: `felt.as_canonical_u64()`, `word.as_elements()`, `word.into_elements()`, `word.as_bytes()`, `word.to_hex()`
 
 **WARNING**: Felt arithmetic is **modular**. Subtraction wraps around the prime. Always validate with `.as_canonical_u64()` before subtracting. See the rust-sdk-pitfalls skill for details.
@@ -82,19 +79,6 @@ The account's authentication procedure authorizes the transition and handles any
 | **P2ID** | Send assets to a specific account | Note script checks consumer's ID matches target |
 | **P2IDE** | P2ID with expiration | Adds block-height timelock; sender can reclaim after expiry |
 | **SWAP** | Atomic asset exchange | Note offers asset A, requests asset B; consumer provides B |
-
-## Standard Components (miden-standards)
-
-| Component | Purpose |
-|-----------|---------|
-| `BasicWallet` | Standard wallet: `receive_asset()`, `move_asset_to_note()` |
-| `FungibleFaucet` | Mint/burn fungible tokens; built via `FungibleFaucet::builder()` |
-| `NoAuth` | No-signature auth for testing/trusted flows; still pays a nonzero fee from the account vault in the native fee asset at 1/1 |
-| `AuthSingleSig` | Production signature authentication — unified auth component covering both Falcon-512 and ECDSA-K256 key types |
-
-**Auth**: `AuthSingleSig` is a single auth component that dispatches on the key type, so one component handles both Falcon-512 and ECDSA-K256 keys. The Falcon-512 scheme uses Poseidon2 as its hash function and is named `Falcon512Poseidon2`.
-
-**Fungible faucet**: `FungibleFaucet` is the fungible-faucet component, constructed with the `bon`-generated `FungibleFaucet::builder()` (required setters `.name(TokenName::new(..)?)`, `.symbol(TokenSymbol::new(..)?)`, `.decimals(n)`, `.max_supply(AssetAmount)`, then `.build()?`).
 
 ## Development Model
 
