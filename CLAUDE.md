@@ -12,78 +12,34 @@ This is a Miden smart contract project using the Rust SDK and compiler.
 
 ## Build & Test
 
-This project uses an immutable v0.16 compiler pipeline rather than the ambient `cargo-miden` or
-the v0.16 midenup channel. Install `cargo-miden` and `midenc` from compiler revision
-`2a5ebf830c910aa5f7bf53ee4df398915ab12f7a` as shown in `README.md`. Derive and verify the isolated
-binary in every shell:
+This project follows the compiler template and SDK at immutable compiler revision
+`5e126fc06d78b2097a7be128f5543cb60817a95e`. Install `cargo-miden` from that revision as
+documented in `README.md`, then derive and verify its absolute path in each shell:
 
 ```bash
 MIDEN_CARGO_HOME="${CARGO_HOME:-${HOME:?HOME must be set}/.cargo}"
-MIDEN_V16_TOOL_ROOT="$MIDEN_CARGO_HOME/miden-v16-0.10.0-rc.1"
-CARGO_MIDEN_BIN="$MIDEN_V16_TOOL_ROOT/bin/cargo-miden"
-test "$("$CARGO_MIDEN_BIN" miden --version)" = 'cargo-miden 0.10.0-rc.1'
-test "$("$MIDEN_V16_TOOL_ROOT/bin/midenc" --version)" = 'midenc 0.10.0-rc.1'
+COMPILER_REV=5e126fc06d78b2097a7be128f5543cb60817a95e
+COMPILER_ROOT="$MIDEN_CARGO_HOME/miden-v16-compiler-$COMPILER_REV"
+export CARGO_MIDEN="$COMPILER_ROOT/bin/cargo-miden"
+test "$("$CARGO_MIDEN" miden --version)" = 'cargo-miden 0.10.0-rc.1'
 ```
 
-Contracts are built individually with that exact binary:
-
-```bash
-"$CARGO_MIDEN_BIN" miden build \
-  --manifest-path contracts/<name>/Cargo.toml --release
+Contracts are built individually with that compiler (not plain `cargo build`):
 ```
+"$CARGO_MIDEN" miden build --manifest-path contracts/<name>/Cargo.toml --release
+```
+
+Each contract has a thin `build.rs` that calls `miden-sdk-build-script-support` to populate the
+Miden package cache, so plain `cargo check` and IDE analysis resolve dependency packages without
+a manual contract build first. The helper gives the compiler named by the `CARGO_MIDEN`
+environment variable precedence over an ambient midenup installation.
 
 Tests run via the workspace:
-
-```bash
+```
 cargo test -p integration --release
 ```
 
 Always build contracts before running tests; tests compile contracts via `build_project_in_dir()`.
-That helper independently derives and version-checks the same isolated compiler.
-
-The post-edit hook also derives
-`${CARGO_HOME:-$HOME/.cargo}/miden-v16-0.10.0-rc.1/bin/cargo-miden` on every invocation and rejects a
-missing or mismatched compiler. It never selects `miden`, `cargo miden`, or `cargo-miden` from
-ambient `PATH`.
-
-### Per-contract build support
-
-Every contract manifest must use the pinned guest SDK and build-support source:
-
-```toml
-[dependencies]
-miden = { version = "=0.14.0-rc.1", git = "https://github.com/0xMiden/compiler", rev = "2a5ebf830c910aa5f7bf53ee4df398915ab12f7a" }
-
-[build-dependencies]
-miden-sdk-build-script-support = { git = "https://github.com/0xMiden/compiler", rev = "2a5ebf830c910aa5f7bf53ee4df398915ab12f7a" }
-```
-
-Each contract's `build.rs` is exactly:
-
-```rust
-fn main() {
-    miden_sdk_build_script_support::prepare_package_cache();
-}
-```
-
-For plain `cargo check` or IDE analysis, run Cargo from the contract directory so its
-`.cargo/config.toml` is discovered, set `CARGO_MIDEN` to the verified absolute binary, and use a
-checkout-private target directory:
-
-```bash
-PROJECT_ROOT="$PWD"
-PLAIN_CARGO_TARGET="$PROJECT_ROOT/target/plain-cargo-v16"
-(
-  cd contracts/counter-account
-  env -u MIDENC_PACKAGE_CACHE \
-    CARGO_MIDEN="$CARGO_MIDEN_BIN" \
-    CARGO_TARGET_DIR="$PLAIN_CARGO_TARGET" \
-    cargo check --release
-)
-```
-
-Do not set `MIDENC_PACKAGE_CACHE` manually. `prepare_package_cache()` stages dependency packages
-under the contract's build output and exports the selected cache to macro expansion.
 
 ## SDK Quick Reference
 
@@ -93,13 +49,8 @@ See the working examples in this project:
 - `integration/tests/counter_test.rs`: MockChain integration test
 
 Common cargo commands:
-- `cargo build -p integration --bin increment_count --release`: build the project's single binary
+- `cargo build -p integration --bin <name> --release`: build a specific binary from the integration crate (e.g. `validate_local`, `increment_count`)
 - `cargo clean -p integration`: run after editing shared library code (e.g. `helpers.rs`) before re-running tests, to avoid stale compiled binaries
-
-`increment_count` currently uses the helper's temporary hard-coded DevNet endpoint
-`https://rpc.devnet.miden.io`. Run it from `integration/` because its contract and store paths are
-relative to that directory. It creates public DevNet accounts, adds a sender key to the existing
-keystore, and submits transactions; returned IDs are submission evidence, not proof of finality.
 
 ## Critical Pitfalls
 
@@ -128,5 +79,5 @@ For complex applications beyond basic patterns (multi-contract apps, novel note 
 
 After modifying contract code, always:
 1. Write tests alongside contracts; tests are the primary verification, builds are the secondary check
-2. Build the contract: `"$CARGO_MIDEN_BIN" miden build --manifest-path contracts/<name>/Cargo.toml --release`
+2. Build the contract: `"$CARGO_MIDEN" miden build --manifest-path contracts/<name>/Cargo.toml --release`
 3. Run tests: `cargo test -p integration --release`

@@ -17,27 +17,22 @@ jobs:
       run: |
         rustup update --no-self-update
         rustc --version
-    - name: Install frozen Miden compiler
+    - name: Install the source-matched Miden compiler
       run: |
         set -euo pipefail
-        MIDEN_CARGO_HOME="${CARGO_HOME:-${HOME:?HOME must be set}/.cargo}"
-        MIDEN_V16_TOOL_ROOT="$MIDEN_CARGO_HOME/miden-v16-0.10.0-rc.1"
-        COMPILER_PIPELINE_COMMIT=2a5ebf830c910aa5f7bf53ee4df398915ab12f7a
+        COMPILER_REV=5e126fc06d78b2097a7be128f5543cb60817a95e
+        COMPILER_ROOT="$RUNNER_TEMP/miden-compiler-$COMPILER_REV"
 
-        cargo install cargo-miden --git https://github.com/0xMiden/compiler \
-          --rev "$COMPILER_PIPELINE_COMMIT" --locked --root "$MIDEN_V16_TOOL_ROOT"
+        cargo install cargo-miden \
+          --git https://github.com/0xMiden/compiler \
+          --rev "$COMPILER_REV" \
+          --locked \
+          --root "$COMPILER_ROOT"
 
-        test "$("$MIDEN_V16_TOOL_ROOT/bin/cargo-miden" miden --version)" = \
+        test "$("$COMPILER_ROOT/bin/cargo-miden" miden --version)" = \
           'cargo-miden 0.10.0-rc.1'
-    - name: Build contracts
-      run: |
-        set -euo pipefail
-        MIDEN_CARGO_HOME="${CARGO_HOME:-${HOME:?HOME must be set}/.cargo}"
-        CARGO_MIDEN_BIN="$MIDEN_CARGO_HOME/miden-v16-0.10.0-rc.1/bin/cargo-miden"
-
-        "$CARGO_MIDEN_BIN" miden build \
-          --manifest-path contracts/counter-account/Cargo.toml --release
-        "$CARGO_MIDEN_BIN" miden build \
-          --manifest-path contracts/increment-note/Cargo.toml --release
+        echo "CARGO_MIDEN=$COMPILER_ROOT/bin/cargo-miden" >> "$GITHUB_ENV"
     - name: Run integration tests
-      run: cargo test --locked -p integration --release
+      working-directory: integration
+      run: |
+        cargo test --locked

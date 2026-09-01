@@ -1,24 +1,19 @@
 //! Common helper functions for scripts and tests
 
-use std::{
-    env,
-    path::{Path, PathBuf},
-    process::Command,
-    sync::Arc,
-};
+use std::{path::Path, sync::Arc};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use miden_client::{
+    Client, Felt, Word,
     account::{
-        component::{BasicWallet, InitStorageData, NoAuth},
         Account, AccountBuilder, AccountComponent, AccountType, StorageSlotName,
+        component::{BasicWallet, InitStorageData, NoAuth},
     },
-    auth::{Approver, AuthSchemeId, AuthSecretKey, AuthSingleSig},
+    auth::{AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
     keystore::{FilesystemKeyStore, Keystore},
-    rpc::Endpoint,
+    rpc::{Endpoint, GrpcClient},
     utils::Deserializable,
-    Client, Felt, Word,
 };
 use miden_client_sqlite_store::ClientBuilderSqliteExt;
 use miden_mast_package::Package;
@@ -42,8 +37,9 @@ pub struct ClientSetup {
 /// or client building fails
 pub async fn setup_client() -> Result<ClientSetup> {
     // Initialize RPC connection
-    let endpoint = Endpoint::devnet();
+    let endpoint = Endpoint::testnet();
     let timeout_ms = 10_000;
+    let rpc_client = Arc::new(GrpcClient::new(&endpoint, timeout_ms));
 
     // Initialize keystore
     let keystore_path = std::path::PathBuf::from("../keystore");
@@ -54,7 +50,7 @@ pub async fn setup_client() -> Result<ClientSetup> {
     let store_path = std::path::PathBuf::from("../store.sqlite3");
 
     let client = ClientBuilder::new()
-        .grpc_client(&endpoint, Some(timeout_ms))
+        .rpc(rpc_client)
         .sqlite_store(store_path)
         .authenticator(keystore.clone())
         .build()
@@ -76,113 +72,27 @@ pub async fn setup_client() -> Result<ClientSetup> {
 /// # Errors
 /// Returns an error if compilation fails or if the output is not in the expected format
 pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
-    const EXPECTED_CARGO_MIDEN_VERSION: &str = "cargo-miden 0.10.0-rc.1";
-
-    let cargo_home = env::var_os("CARGO_HOME")
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
-        .context("CARGO_HOME and HOME are both unset; cannot locate the v0.16 compiler")?;
-    let cargo_miden = cargo_home
-        .join("miden-v16-0.10.0-rc.1")
-        .join("bin")
-        .join("cargo-miden");
-
-    if !cargo_miden.is_absolute() {
-        bail!(
-            "v0.16 cargo-miden path is not absolute: {}",
-            cargo_miden.display()
-        );
-    }
-    if !cargo_miden.is_file() {
-        bail!(
-            "required v0.16 cargo-miden executable does not exist at {}",
-            cargo_miden.display()
-        );
-    }
-
-    let version_output = Command::new(&cargo_miden)
-        .args(["miden", "--version"])
-        .output()
-        .with_context(|| {
-            format!(
-                "Failed to execute v0.16 compiler at {}",
-                cargo_miden.display()
-            )
-        })?;
-    let version_stdout = String::from_utf8(version_output.stdout)
-        .context("cargo-miden version output was not valid UTF-8")?;
-    let version_stdout = version_stdout.trim_end_matches(['\r', '\n']);
-    let version_stderr = String::from_utf8_lossy(&version_output.stderr);
-    if !version_output.status.success()
-        || version_stdout != EXPECTED_CARGO_MIDEN_VERSION
-        || !version_stderr.is_empty()
-    {
-        bail!(
-            "compiler at {} reported stdout {:?}, stderr {:?}, and status {}; expected exactly {:?}",
-            cargo_miden.display(),
-            version_stdout,
-            version_stderr,
-            version_output.status,
-            EXPECTED_CARGO_MIDEN_VERSION
-        );
-    }
-
     let profile = if release { "--release" } else { "--debug" };
-    let project_dir = dir
-        .canonicalize()
-        .with_context(|| format!("Failed to resolve project directory {}", dir.display()))?;
-    let manifest_path = project_dir.join("Cargo.toml");
+    let profile_name = if release { "release" } else { "debug" };
+    let manifest_path = dir.join("Cargo.toml");
+    let artifact_path = dir.join("target").join("miden").join(profile_name).join("out.masp");
 
-    let output = Command::new(&cargo_miden)
-        .args(["miden", "build", profile, "--manifest-path"])
-        .arg(&manifest_path)
-        .env("CARGO_MIDEN", &cargo_miden)
-        .current_dir(&project_dir)
-        .output()
-        .context("Failed to compile project")?;
+    let args = vec![
+        profile.to_string(),
+        "-o".to_string(),
+        artifact_path.display().to_string(),
+        "--manifest-path".to_string(),
+        manifest_path.display().to_string(),
+    ];
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !output.status.success() {
-        bail!(
-            "Failed to compile project {} (status {}):\nstdout:\n{}\nstderr:\n{}",
-            project_dir.display(),
-            output.status,
-            stdout,
-            stderr
-        );
+    let status = miden_build(args).context("Failed to compile project")?;
+
+    if !status.success() {
+        bail!("Failed to compile project package. See output for details.");
     }
 
-    let artifact_reports = stdout
-        .lines()
-        .chain(stderr.lines())
-        .filter_map(|line| line.trim().strip_prefix("Compiled "))
-        .collect::<Vec<_>>();
-    let [artifact_report] = artifact_reports.as_slice() else {
-        bail!(
-            "cargo-miden must report exactly one compiled artifact, but reported {}:\nstdout:\n{}\nstderr:\n{}",
-            artifact_reports.len(),
-            stdout,
-            stderr
-        );
-    };
-    let artifact_path = PathBuf::from(artifact_report);
-    let artifact_path = if artifact_path.is_absolute() {
-        artifact_path
-    } else {
-        project_dir.join(artifact_path)
-    };
-    if !artifact_path.is_file() {
-        bail!(
-            "cargo-miden reported an artifact that is not a regular file: {}",
-            artifact_path.display()
-        );
-    }
-
-    let package_bytes = std::fs::read(&artifact_path).context(format!(
-        "Failed to read compiled package from {}",
-        artifact_path.display()
-    ))?;
+    let package_bytes = std::fs::read(&artifact_path)
+        .context(format!("Failed to read compiled package from {}", artifact_path.display()))?;
 
     Package::read_from_bytes(&package_bytes).context("Failed to deserialize package from bytes")
 }
@@ -201,7 +111,7 @@ pub fn counter_storage_slot() -> Result<StorageSlotName> {
 
 /// Configuration for creating an account with a custom component
 pub struct AccountCreationConfig {
-    /// The account type to create. This also encodes the
+    /// The account type to create. The account type also encodes the
     /// storage visibility (`AccountType::Public` / `AccountType::Private`).
     pub account_type: AccountType,
     /// Initial component storage data keyed by storage slot schema.
@@ -282,15 +192,10 @@ pub async fn create_basic_wallet_account(
 
     let builder = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
-        .with_component(AuthSingleSig::new(Approver::new(
-            key_pair.public_key().to_commitment(),
-            AuthSchemeId::Falcon512Poseidon2,
-        )))
+        .with_component(AuthSingleSig::from_public_key(key_pair.public_key()))
         .with_component(BasicWallet);
 
-    let account = builder
-        .build()
-        .context("Failed to build basic wallet account")?;
+    let account = builder.build().context("Failed to build basic wallet account")?;
 
     client
         .add_account(&account, false)
@@ -303,4 +208,29 @@ pub async fn create_basic_wallet_account(
         .context("Failed to add key to keystore")?;
 
     Ok(account)
+}
+
+fn miden_build(args: impl IntoIterator<Item = String>) -> anyhow::Result<std::process::ExitStatus> {
+    let mut cmd = match std::env::var_os("CARGO_MIDEN") {
+        Some(cargo_miden) => {
+            // The `cargo-miden` binary expects the `miden` subcommand token,
+            // the same as when cargo invokes it as `cargo miden`.
+            let mut cmd = std::process::Command::new(cargo_miden);
+            cmd.arg("miden");
+            cmd
+        }
+        None if std::env::var_os("MIDENUP_HOME").is_some() => {
+            std::process::Command::new("miden")
+        }
+        None => {
+            let mut cmd = std::process::Command::new("cargo");
+            cmd.arg("miden");
+            cmd
+        }
+    };
+    cmd.arg("build").args(args);
+
+    let mut child = cmd.spawn().map_err(|err| anyhow!("Failed to spawn build command: {err}"))?;
+
+    child.wait().map_err(|err| anyhow!("Build command failed: {err}"))
 }

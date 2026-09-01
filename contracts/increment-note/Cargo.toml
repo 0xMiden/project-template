@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-miden = { version = "=0.14.0-rc.1", git = "https://github.com/0xMiden/compiler", rev = "2a5ebf830c910aa5f7bf53ee4df398915ab12f7a" }
+miden = { git = "https://github.com/0xMiden/compiler", rev = "5e126fc06d78b2097a7be128f5543cb60817a95e" }
 
 [build-dependencies]
-miden-sdk-build-script-support = { git = "https://github.com/0xMiden/compiler", rev = "2a5ebf830c910aa5f7bf53ee4df398915ab12f7a" }
+miden-sdk-build-script-support = { git = "https://github.com/0xMiden/compiler", rev = "5e126fc06d78b2097a7be128f5543cb60817a95e" }

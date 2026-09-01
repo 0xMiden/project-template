@@ -68,14 +68,14 @@ async fn counter_test() -> anyhow::Result<()> {
     // Build the mock chain
     let mut mock_chain = builder.build()?;
 
-    // Build the transaction context
-    let tx_context = mock_chain
+    // Build the mock transaction
+    let transaction = mock_chain
         .build_transaction(counter_account.clone())
-        .authenticated_input_notes([counter_note.id()])
+        .authenticated_input_note(counter_note.id())
         .build()?;
 
     // Execute the transaction
-    let executed_transaction = tx_context.execute().await?;
+    let executed_transaction = transaction.execute().await?;
 
     // Add the executed transaction to the mockchain
     mock_chain.add_pending_executed_transaction(&executed_transaction)?;
@@ -85,10 +85,7 @@ async fn counter_test() -> anyhow::Result<()> {
     let count = mock_chain
         .committed_account(counter_account.id())?
         .storage()
-        .get_map_item(
-            &counter_storage_slot,
-            StorageMapKey::new(COUNTER_STORAGE_KEY),
-        )
+        .get_map_item(&counter_storage_slot, StorageMapKey::new(COUNTER_STORAGE_KEY))
         .expect("Failed to get counter value from storage slot");
 
     // Map values are returned as scalar words in `[value, 0, 0, 0]` layout.
