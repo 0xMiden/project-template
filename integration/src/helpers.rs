@@ -211,22 +211,22 @@ pub async fn create_basic_wallet_account(
 }
 
 fn miden_build(args: impl IntoIterator<Item = String>) -> anyhow::Result<std::process::ExitStatus> {
-    let mut cmd = match std::env::var_os("CARGO_MIDEN") {
-        Some(cargo_miden) => {
-            // The `cargo-miden` binary expects the `miden` subcommand token,
-            // the same as when cargo invokes it as `cargo miden`.
-            let mut cmd = std::process::Command::new(cargo_miden);
-            cmd.arg("miden");
-            cmd
-        }
-        None if std::env::var_os("MIDENUP_HOME").is_some() => {
-            std::process::Command::new("miden")
-        }
-        None => {
-            let mut cmd = std::process::Command::new("cargo");
-            cmd.arg("miden");
-            cmd
-        }
+    let mut cmd = match std::env::var_os("MIDENUP_HOME") {
+        Some(_) => std::process::Command::new("miden"),
+        None => match std::env::var_os("CARGO_MIDEN") {
+            Some(cargo_miden) => {
+                // The `cargo-miden` binary expects the `miden` subcommand token,
+                // the same as when cargo invokes it as `cargo miden`.
+                let mut cmd = std::process::Command::new(cargo_miden);
+                cmd.arg("miden");
+                cmd
+            }
+            None => {
+                let mut cmd = std::process::Command::new("cargo");
+                cmd.arg("miden");
+                cmd
+            }
+        },
     };
     cmd.arg("build").args(args);
 

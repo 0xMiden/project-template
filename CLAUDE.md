@@ -12,27 +12,15 @@ This is a Miden smart contract project using the Rust SDK and compiler.
 
 ## Build & Test
 
-This project follows the compiler template and SDK at immutable compiler revision
-`5e126fc06d78b2097a7be128f5543cb60817a95e`. Install `cargo-miden` from that revision as
-documented in `README.md`, then derive and verify its absolute path in each shell:
-
-```bash
-MIDEN_CARGO_HOME="${CARGO_HOME:-${HOME:?HOME must be set}/.cargo}"
-COMPILER_REV=5e126fc06d78b2097a7be128f5543cb60817a95e
-COMPILER_ROOT="$MIDEN_CARGO_HOME/miden-v16-compiler-$COMPILER_REV"
-export CARGO_MIDEN="$COMPILER_ROOT/bin/cargo-miden"
-test "$("$CARGO_MIDEN" miden --version)" = 'cargo-miden 0.10.0-rc.1'
+Contracts are built individually with cargo-miden (not `cargo build`):
 ```
-
-Contracts are built individually with that compiler (not plain `cargo build`):
-```
-"$CARGO_MIDEN" miden build --manifest-path contracts/<name>/Cargo.toml --release
+cargo miden build --manifest-path contracts/<name>/Cargo.toml --release
 ```
 
 Each contract has a thin `build.rs` that calls `miden-sdk-build-script-support` to populate the
 Miden package cache, so plain `cargo check` and IDE analysis resolve dependency packages without
-a manual contract build first. The helper gives the compiler named by the `CARGO_MIDEN`
-environment variable precedence over an ambient midenup installation.
+a manual `cargo miden build` first. The helper needs `cargo miden` on `PATH` (or a binary named
+by the `CARGO_MIDEN` environment variable).
 
 Tests run via the workspace:
 ```
@@ -79,5 +67,5 @@ For complex applications beyond basic patterns (multi-contract apps, novel note 
 
 After modifying contract code, always:
 1. Write tests alongside contracts; tests are the primary verification, builds are the secondary check
-2. Build the contract: `"$CARGO_MIDEN" miden build --manifest-path contracts/<name>/Cargo.toml --release`
+2. Build the contract: `cargo miden build --manifest-path contracts/<name>/Cargo.toml --release`
 3. Run tests: `cargo test -p integration --release`

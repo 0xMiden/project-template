@@ -8,21 +8,7 @@ Before getting started, ensure you have the following prerequisites:
 
 1. **Install Rust** - Make sure you have Rust installed on your system. If not, install it from [rustup.rs](https://rustup.rs/)
 
-2. **Install the source-matched Miden compiler** - This project follows the compiler template at
-   revision `5e126fc06d78b2097a7be128f5543cb60817a95e`. Install `cargo-miden` from that
-   immutable revision into an isolated Cargo root:
-
-   ```bash
-   MIDEN_CARGO_HOME="${CARGO_HOME:-${HOME:?HOME must be set}/.cargo}"
-   COMPILER_REV=5e126fc06d78b2097a7be128f5543cb60817a95e
-   COMPILER_ROOT="$MIDEN_CARGO_HOME/miden-v16-compiler-$COMPILER_REV"
-
-   cargo install cargo-miden --git https://github.com/0xMiden/compiler \
-     --rev "$COMPILER_REV" --locked --root "$COMPILER_ROOT"
-
-   export CARGO_MIDEN="$COMPILER_ROOT/bin/cargo-miden"
-   test "$("$CARGO_MIDEN" miden --version)" = 'cargo-miden 0.10.0-rc.1'
-   ```
+2. **Install midenup toolchain** - Follow the installation instructions at: <https://github.com/0xMiden/midenup>
 
 ## **Structure**
 
@@ -34,6 +20,7 @@ miden-project/
 ├── integration/                 # Integration crate (scripts + tests)
 │   ├── src/
 │   │   ├── bin/                 # Rust binaries for on-chain interactions
+│   │   ├── config.rs            # Temporary config file (do not modify!)
 │   │   ├── helpers.rs           # Temporary helper file (do not modify!)
 │   │   └── lib.rs
 │   └── tests/                   # Test files
@@ -71,7 +58,7 @@ This structure provides flexibility as your application grows, allowing you to a
 To create a new contract crate, run the following command from the workspace root:
 
 ```bash
-"$CARGO_MIDEN" miden new --account contracts/my-account
+miden new --account contracts/my-account
 ```
 
 This will scaffold a new contract crate inside the `contracts/` directory with all the necessary boilerplate.
@@ -98,19 +85,18 @@ Tests are located in `integration/tests/`. To add a new test:
 
 ```bash
 # Compile a specific contract
-"$CARGO_MIDEN" miden build --manifest-path contracts/counter-account/Cargo.toml
+miden build --manifest-path contracts/counter-account/Cargo.toml
 
 # Or navigate to the contract directory
 cd contracts/counter-account
-"$CARGO_MIDEN" miden build
+miden build
 ```
 
 Each contract also has a thin `build.rs` that delegates to
 `miden-sdk-build-script-support`, keeping plain `cargo check` and IDE analysis working. The
 helper populates the Miden package cache with the contract's compiled dependencies, so the SDK
-macros resolve them without a manual build. Export the verified absolute `CARGO_MIDEN` path before
-running plain Cargo commands or IDE analysis; that explicit path takes precedence over an ambient
-midenup installation.
+macros resolve them without a manual build. It needs `cargo miden` on `PATH` (or a binary named
+by the `CARGO_MIDEN` environment variable).
 
 ### Run a Binary
 

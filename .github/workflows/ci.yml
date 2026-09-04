@@ -17,22 +17,11 @@ jobs:
       run: |
         rustup update --no-self-update
         rustc --version
-    - name: Install the source-matched Miden compiler
+    - name: Install midenup and stable compiler components
       run: |
-        set -euo pipefail
-        COMPILER_REV=5e126fc06d78b2097a7be128f5543cb60817a95e
-        COMPILER_ROOT="$RUNNER_TEMP/miden-compiler-$COMPILER_REV"
-
-        cargo install cargo-miden \
-          --git https://github.com/0xMiden/compiler \
-          --rev "$COMPILER_REV" \
-          --locked \
-          --root "$COMPILER_ROOT"
-
-        test "$("$COMPILER_ROOT/bin/cargo-miden" miden --version)" = \
-          'cargo-miden 0.10.0-rc.1'
-        echo "CARGO_MIDEN=$COMPILER_ROOT/bin/cargo-miden" >> "$GITHUB_ENV"
+        cargo install --locked midenup && midenup init && midenup install 0.16.0 && midenc --version
+        echo "MIDENUP_HOME=$(midenup show home)" >> "$GITHUB_ENV"
     - name: Run integration tests
       working-directory: integration
       run: |
-        cargo test --locked
+        cargo test
