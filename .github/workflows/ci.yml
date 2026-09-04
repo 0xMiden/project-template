@@ -20,7 +20,7 @@ jobs:
     - name: Install midenup and stable compiler components
       run: |
         cargo install --locked midenup && midenup init && midenup install 0.16.0 && miden midenc --version
-        echo "MIDENUP_HOME=$(midenup show home)" >> "$GITHUB_ENV"
+        echo "$(midenup show home)/opt" >> "$GITHUB_PATH"
     - name: Run integration tests
       working-directory: integration
       run: |
