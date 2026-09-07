@@ -7,4 +7,11 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-miden = "0.13"
+
+miden = { version = "0.14" }
+
+
+[build-dependencies]
+
+miden-sdk-build-script-support = { version = "0.14" }
+
