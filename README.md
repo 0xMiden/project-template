@@ -20,7 +20,6 @@ miden-project/
 ├── integration/                 # Integration crate (scripts + tests)
 │   ├── src/
 │   │   ├── bin/                 # Rust binaries for on-chain interactions
-│   │   ├── config.rs            # Temporary config file (do not modify!)
 │   │   ├── helpers.rs           # Temporary helper file (do not modify!)
 │   │   └── lib.rs
 │   └── tests/                   # Test files
