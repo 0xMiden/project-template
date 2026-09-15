@@ -22,7 +22,7 @@ Rule of thumb: if the task involves more than one contract or a pattern not cove
 
 This is the single highest-leverage practice for AI-assisted Miden development.
 
-**Build loop**: After every contract edit, run the midenup / cargo-miden command from this project's `README.md` and `CLAUDE.md`, e.g. `miden build --manifest-path contracts/<name>/Cargo.toml --release` or `cargo miden build --manifest-path contracts/<name>/Cargo.toml --release` (adjust the path to your project's contract layout). `build` forwards its arguments to `midenc`'s compiler parser, so `--manifest-path` and the profile flags (`--release` / `--debug`) are understood. The output is a `.masp` package written under `<target_dir>/<profile>/`. If your project has a build hook configured, it may run this automatically. If the build fails:
+**Build loop**: After every contract edit, run `cargo miden build --manifest-path contracts/<name>/Cargo.toml --release` from the project root (adjust the path to your contract layout). With the midenup `miden` wrapper, run `miden build --release` from the contract directory instead: `miden build --manifest-path ...` alone does not select that contract from the workspace root. The output is a `.masp` package written under `<target_dir>/<profile>/`. If your project has a build hook configured, it may run this automatically. If the build fails:
 1. Read the error message
 2. Translate obvious SDK/compiler errors first:
    - `.as_u64()` -> `.as_canonical_u64()`

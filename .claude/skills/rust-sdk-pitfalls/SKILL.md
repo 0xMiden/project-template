@@ -754,12 +754,16 @@ method (P14). Other observed values of `supported-types`: `"RegularAccountImmuta
 `["FungibleFaucet", "NonFungibleFaucet"]` for faucets.
 
 Cross-component dependencies go in `miden-project.toml`'s `[dependencies]` - never in `Cargo.toml`,
-which the macros read only for `[package] name` / `description`. The macro reads embedded WIT from
-dependency packages and uses `MIDENC_PACKAGE_CACHE` for source dependencies prepared by `build.rs`.
-Do not add a `wit` override for a dependency whose package already embeds WIT; current macros reject
-that override. For source dependencies, plain Cargo checks, builds, and IDE analysis require the
-dependency crate's `build.rs` to call `miden_sdk_build_script_support::prepare_package_cache()` with
-a matching `miden-sdk-build-script-support` dependency.
+which the macros read only for `[package] name` / `description`. Embedded component WIT is
+authoritative: a `wit` override is rejected when the package embeds WIT, and is only a fallback
+for packages without embedded WIT.
+
+For plain Cargo checks, builds, and IDE analysis with source dependencies, the **consuming crate**
+must have `miden-sdk-build-script-support = { version = "0.14" }` under `[build-dependencies]` and
+call `miden_sdk_build_script_support::prepare_package_cache()` from its own `build.rs`. This
+prepares `MIDENC_PACKAGE_CACHE` for that crate's macro expansion; the dependency crate's hook
+does not configure its consumers. `cargo miden build`, a direct `.masp` dependency, or an already
+valid package cache bypasses that requirement.
 
 ## P22: MASM-Side Facts That Bite Rust SDK Developers
 

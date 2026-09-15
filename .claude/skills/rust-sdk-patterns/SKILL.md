@@ -284,7 +284,23 @@ miden-protocol = "*"
 basic-wallet = { path = "../basic-wallet" }
 ```
 
-The `[dependencies]` entry is required. Do not add a `[package.metadata.miden.dependencies].<name>.wit` override for normal source or `.masp` dependencies whose packages already embed WIT; current SDK macros read the embedded package WIT and reject an explicit WIT override when embedded WIT exists. For source dependencies, make sure the dependency crate has a `build.rs` that calls `miden_sdk_build_script_support::prepare_package_cache()` with a matching `miden-sdk-build-script-support` dependency so Cargo checks and IDE analysis populate `MIDENC_PACKAGE_CACHE`.
+The `[dependencies]` entry is required. A component's WIT is embedded in its compiled package and is authoritative. Do not add a `[package.metadata.miden.dependencies].<name>.wit` override when the package already embeds WIT; current SDK macros reject that combination. An explicit WIT path is only a fallback for packages without embedded WIT.
+
+`cargo miden build` prepares source dependencies for you. For plain Cargo checks and IDE analysis, put the build helper in the **consuming crate**: the note, transaction script, or component whose macros reference the dependency. Keep the template's matching build dependency and `build.rs` in that crate:
+
+```toml
+[build-dependencies]
+miden-sdk-build-script-support = { version = "0.14" }
+```
+
+```rust
+// build.rs in the consuming crate
+fn main() {
+    miden_sdk_build_script_support::prepare_package_cache();
+}
+```
+
+This prepares `MIDENC_PACKAGE_CACHE` for that crate's macro expansion. A hook in the dependency crate does not configure the consumer. Direct `.masp` dependencies and an already valid package cache do not need this preparation.
 
 Then expose the dependency's methods on the consuming account by declaring an `#[account(package::Interface)]` wrapper (e.g. `#[account(basic_wallet::BasicWallet)] pub struct Wallet;`) and calling methods on the injected `account` parameter. The package name is the dependency's Rust-style name (`-` replaced with `_`) and `Interface` is its exported WIT interface in UpperCamelCase.
 
@@ -351,13 +367,13 @@ Supported field types include `Felt`, the unsigned integer scalars (`u64`, `u32`
 
 For dependency wiring, see "Cross-Component Dependencies" above. See [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) for the project-template's local example of the `#[note] struct + #[note] impl` macro form.
 
-**Storage-free case** (sender + assets, single component call per asset): declare a unit struct. The script reads the sender and attached assets from `active_note`, then calls the component method per asset. The macro still generates the deserialization wrapper; for a unit struct it only asserts the input Felt slice is empty. The miden-bank [deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) shows this flow.
+**Storage-free case** (sender + assets, single component call per asset): declare a unit struct. The script reads the sender and attached assets from `active_note`, then calls the component method per asset. A unit note struct skips automatic storage decoding; the script can still read and validate storage explicitly when needed. The miden-bank [deposit-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/deposit-note/src/lib.rs) shows this flow.
 
-**Input-bearing case** (note carries scripted data): declare named fields on the note struct when possible. The macro deserializes them in declaration order, and the script accesses them via `self.<field>`. The miden-bank [withdraw-request-note](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/withdraw-request-note/src/lib.rs) is the canonical older raw-input example: it reads 11 Felts from the note inputs, reconstructs the requested asset, serial number, tag, aux, and note type, then calls `bank_account::withdraw(...)`. For new typed notes, preserve that layout but prefer typed fields and let the macro perform the deserialization.
+**Input-bearing case** (note carries scripted data): declare named fields on the note struct when possible. The macro deserializes them in declaration order, and the script accesses them via `self.<field>`. The miden-bank [withdraw-request-note](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/contracts/withdraw-request-note/src/lib.rs) shows manual parsing of 14 storage Felts: four for the asset encoding, four for the serial number, one each for the tag and note type, and four for the P2ID script root. It calls `account.withdraw(asset, serial_num, tag, note_type)` through its account wrapper; the bank reads the script root directly from the active note's storage. Keep the host serialization and the consuming script's layout in agreement.
 
 **Component side that absorbs the call**: see [miden-bank bank-account](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/contracts/bank-account/src/lib.rs) for `deposit(...)` and `withdraw(...)` in a fuller example. The component method validates balances, updates storage, and, for `withdraw`, creates a P2ID output note via the existing P2ID pattern.
 
-**Test wiring**: tests pass the serialized Felt representation of the note fields through `NoteCreationConfig.inputs`, in declaration order. See `rust-sdk-testing-patterns` skill, "Note Construction", for the helper that builds a note from a compiled `.masp` package and a populated `NoteCreationConfig`.
+**Test wiring**: tests pass the serialized Felt representation of the note fields through `NoteCreationConfig.storage`, in declaration order. See `rust-sdk-testing-patterns` skill, "Note Construction", for the helper that builds a note from a compiled `.masp` package and a populated `NoteCreationConfig`.
 
 ## Asset Receiving via Component Methods
 

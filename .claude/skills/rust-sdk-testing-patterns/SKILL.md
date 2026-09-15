@@ -201,8 +201,9 @@ because `&mut T: Rng`. Other builder methods: `package`, `script`, `code`, `note
 
 > `Felt::new(u64)` is **fallible** — it returns `Result<Felt, FeltFromIntError>`. `note_storage`
 > takes `impl IntoIterator<Item = Felt>`, so build each felt with the infallible
-> `Felt::from(42_u32)` for in-range literals (`From<u8>/<u16>/<u32>` are infallible); for a `u64`
-> use `Felt::new(n)?` or `Felt::new_unchecked(n)`.
+> `Felt::from(42_u32)` for in-range literals (`From<u8>/<u16>/<u32>` are infallible); for an
+> arbitrary `u64`, use `Felt::new(n)?`. Use `Felt::new_unchecked(n)` only after proving
+> `n < Felt::ORDER`.
 
 > A note carries at most `MAX_ASSETS_PER_NOTE` = **16** assets.
 
@@ -340,7 +341,7 @@ Notes flow through MockChain in four steps:
 
 After `execute()` and before `add_pending_executed_transaction(...) + prove_next_block()`: if a later step will keep using the same in-memory `Account` variable, call `account.apply_patch(executed.account_patch())?` to keep the variable in sync with the chain. Post-block reads should use `mock_chain.committed_account(account.id())?`. For block advancement and reference-block semantics, see "MockChain Block Numbering" below.
 
-See [counter_test.rs](../../../integration/tests/counter_test.rs) for the current project-template note consume + prove cycle. The miden-bank [withdraw_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/withdraw_test.rs) and [deposit_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/deposit_test.rs) remain useful for multi-note flow and note-input layout, but they use older `build_tx_context(...)` / `OutputNote` naming; translate those examples to the current `build_transaction(...)` / `RawOutputNote` APIs shown above.
+See [counter_test.rs](../../../integration/tests/counter_test.rs) for the current project-template note consume + prove cycle. The miden-bank [withdraw_test.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/tests/withdraw_test.rs) and [deposit_test.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/tests/deposit_test.rs) provide fuller examples of multi-note flow and note-storage layout.
 
 ## Multi-Transaction Test Pattern
 
@@ -380,16 +381,16 @@ Prefer `NoteBuilder` for creating notes in tests. Start from `NoteBuilder::new(s
 
 When a test or binary needs full control over the note, start with the compiled `.masp` package and construct the note script from the package. The current project-template path is `NoteScript::from_package(package.as_ref())`, seed a `RandomCoin` from `Word::from(note_script.root())`, and pass the package into `NoteBuilder::package((*package).clone())` before adding assets, storage inputs, type, tag, serial number, or attachments.
 
-The miden-bank tutorial codifies a lower-level variant in helpers built around `NoteScript::from_parts(...)`, `NoteInputs::new(config.inputs)`, `NoteRecipient::new(...)`, `NoteMetadata::new(...)`, and `Note::new(...)`:
+The miden-bank tutorial wraps `NoteScript::from_package(...)` and `NoteBuilder` in two helpers:
 
-- **Real-client path** (`create_note_from_package`): calls `client.rng().draw_word()` for a fresh per-note serial. Used when the note will be published via a real `TransactionRequestBuilder`. See [miden-bank helpers.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/src/helpers.rs) (`create_note_from_package`).
-- **Deterministic test path** (`create_testing_note_from_package`): uses a deterministic serial so tests can seed `MockChainBuilder` with a freshly built note. See [miden-bank helpers.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/src/helpers.rs) (`create_testing_note_from_package`).
+- **Real-client path** (`create_note_from_package`): passes `client.rng().draw_word()` to `NoteBuilder::serial_number(...)` for a fresh per-note serial. Used when the note will be published via a real `TransactionRequestBuilder`. See [miden-bank helpers.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/src/helpers.rs) (`create_note_from_package`).
+- **Deterministic test path** (`create_testing_note_from_package`): seeds a `RandomCoin` from `Word::from(note_script.root())` and lets `NoteBuilder` derive the serial so tests can seed `MockChainBuilder` reproducibly. See [miden-bank helpers.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/src/helpers.rs) (`create_testing_note_from_package`).
 
-Both helpers take a `NoteCreationConfig` with `note_type`, `tag`, `assets`, `inputs`, `execution_hint`, and `aux`. See [miden-bank helpers.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/src/helpers.rs) (`NoteCreationConfig` struct + `Default` impl). To drive a cross-component note (see `rust-sdk-patterns` "Cross-Component Note Pattern"), populate `NoteCreationConfig.inputs` with the serialized Felt representation expected by the note script.
+Both helpers take a `NoteCreationConfig` with four fields: `note_type: NoteType`, `tag: NoteTag`, `assets: NoteAssets`, and `storage: Vec<Felt>`. See [miden-bank helpers.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/src/helpers.rs) (`NoteCreationConfig` struct + `Default` impl). To drive a cross-component note (see `rust-sdk-patterns` "Cross-Component Note Pattern"), populate `NoteCreationConfig.storage` with the serialized Felt representation expected by the note script; the helper passes it to `NoteBuilder::note_storage(...)`.
 
-Test-side example: see [miden-bank withdraw_test.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/tests/withdraw_test.rs) for an input vector reaching the note via `NoteCreationConfig { inputs, ..Default::default() }` and the seeded `MockChainBuilder.add_output_note(OutputNote::Full(...))` call before `builder.build()`.
+Test-side example: see [miden-bank withdraw_test.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/tests/withdraw_test.rs) for a storage vector reaching the note via `NoteCreationConfig { storage, ..Default::default() }` and the seeded `MockChainBuilder.add_output_note(RawOutputNote::Full(...))` call before `builder.build()`.
 
-Binary-side example: see [miden-bank deposit.rs](https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/src/bin/deposit.rs) for `build_project_in_dir(...)` to produce the `.masp` package, `create_note_from_package(...)` to assemble the note, then `TransactionRequestBuilder::own_output_notes(vec![OutputNote::Full(note.clone())])` and `unauthenticated_input_notes([(note.clone(), None)])` to publish and consume. For the surrounding client setup (CLI side), see the `miden-client-cli` skill.
+Binary-side example: see [miden-bank deposit.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/src/bin/deposit.rs) for `build_project_in_dir(...)` to produce the `.masp` package and `create_note_from_package(...)` to assemble the note. With the template's locked client, use `TransactionRequestBuilder::own_output_notes(vec![note.clone()])` to publish and `input_notes([(note.clone(), None)])` to consume. For the surrounding client setup (CLI side), see the `miden-client-cli` skill.
 
 ## Asset-Bearing Note Example
 
@@ -398,7 +399,7 @@ Binary-side example: see [miden-bank deposit.rs](https://github.com/0xMiden/tuto
    — or pass it via `NoteBuilder::add_assets`.
 2. Seed a `RandomCoin` from `Word::from(NoteScript::from_package(note_package.as_ref())?.root())`.
 3. Pass any note inputs into `note_storage(...)?`, building each felt with the infallible
-   `Felt::from(_u32)` for in-range literals or `Felt::new_unchecked(n)` for `u64` inputs.
+   `Felt::from(_u32)` for in-range literals or checked `Felt::new(n)?` for arbitrary `u64` inputs.
 4. Finish with `.package((*note_package).clone()).build()?`.
 
 The faucet must be set up first (see Step 3) and the sender wallet must hold sufficient assets
@@ -430,7 +431,7 @@ The contracts a test builds depend on the guest SDK `miden = { version = "0.14" 
 - [ ] Contracts are built out of process with `build_project_in_dir(...)` / midenup / `CARGO_MIDEN` / `cargo miden`, not by depending on `cargo-miden`
 - [ ] `NoteScript::root()` converted with `Word::from(..)` before seeding `RandomCoin`
 - [ ] `NoteBuilder::tag(..)` is passed a `u32`
-- [ ] Note-storage felts built with infallible `Felt::from(_u32)` or `Felt::new_unchecked(_u64)`
+- [ ] Note-storage felts built with infallible `Felt::from(_u32)` or checked `Felt::new(n)?` for arbitrary `u64` inputs
 - [ ] `Note::new(..)` is passed a `PartialNoteMetadata` (not `NoteMetadata`)
 - [ ] Transaction scripts built with `TransactionScript::from_package(&package)?`
 - [ ] Execution goes through `chain.build_transaction(..)` with `.authenticated_input_note(..)` / `.unauthenticated_input_note(..)`, then `.build()?.execute().await?`
