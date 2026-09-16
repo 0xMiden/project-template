@@ -72,6 +72,16 @@ pub async fn setup_client() -> Result<ClientSetup> {
 /// # Errors
 /// Returns an error if compilation fails or if the output is not in the expected format
 pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
+    // Canonicalize before deriving any path from `dir`: `miden build` resolves
+    // the project from the current directory rather than `--manifest-path`
+    // (kept below for forward compatibility), so `miden_build` runs the child
+    // process with its cwd set to `dir`. A relative `dir` (every current
+    // caller passes one, e.g. `../contracts/counter-account`) would then be
+    // re-resolved against that new cwd for the `-o`/`--manifest-path` values
+    // below, silently pointing at the wrong location.
+    let dir = dir
+        .canonicalize()
+        .context(format!("Failed to resolve project directory {}", dir.display()))?;
     let profile = if release { "--release" } else { "--debug" };
     let profile_name = if release { "release" } else { "debug" };
     let manifest_path = dir.join("Cargo.toml");
@@ -85,7 +95,7 @@ pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
         manifest_path.display().to_string(),
     ];
 
-    let status = miden_build(args).context("Failed to compile project")?;
+    let status = miden_build(&dir, args).context("Failed to compile project")?;
 
     if !status.success() {
         bail!("Failed to compile project package. See output for details.");
@@ -210,7 +220,10 @@ pub async fn create_basic_wallet_account(
     Ok(account)
 }
 
-fn miden_build(args: impl IntoIterator<Item = String>) -> anyhow::Result<std::process::ExitStatus> {
+fn miden_build(
+    cwd: &Path,
+    args: impl IntoIterator<Item = String>,
+) -> anyhow::Result<std::process::ExitStatus> {
     let mut cmd = match std::env::var_os("MIDENUP_HOME") {
         Some(_) => std::process::Command::new("miden"),
         None => match std::env::var_os("CARGO_MIDEN") {
@@ -222,12 +235,26 @@ fn miden_build(args: impl IntoIterator<Item = String>) -> anyhow::Result<std::pr
                 cmd
             }
             None => {
+                // Neither MIDENUP_HOME nor CARGO_MIDEN is set, so this relies on
+                // `cargo miden` already being on PATH. `midenup init` does not
+                // export MIDENUP_HOME into the shell, so a fresh terminal hits
+                // this branch by default; if `cargo-miden` isn't installed
+                // either, the build below fails with cargo's own unrelated
+                // "no such command: `miden`" error, so warn here up front
+                // instead of leaving that as the only clue.
+                eprintln!(
+                    "warning: MIDENUP_HOME and CARGO_MIDEN are both unset; falling back to \
+                     `cargo miden`, which requires cargo-miden to already be on PATH. If the \
+                     build fails with \"no such command: `miden`\", export MIDENUP_HOME (see \
+                     `midenup init`) or set CARGO_MIDEN to your cargo-miden binary path."
+                );
                 let mut cmd = std::process::Command::new("cargo");
                 cmd.arg("miden");
                 cmd
             }
         },
     };
+    cmd.current_dir(cwd);
     cmd.arg("build").args(args);
 
     let mut child = cmd.spawn().map_err(|err| anyhow!("Failed to spawn build command: {err}"))?;
