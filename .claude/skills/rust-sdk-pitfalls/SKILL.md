@@ -188,6 +188,11 @@ check at all — a record of nine `u64` fields is 9 values but 18 felts and is n
 
 ### Unrelated, but adjacent
 
+**Raw FPI ordering changed in SDK 0.15.** `ForeignProcedureInputs::new(values)`
+puts `values[i]` in slot `i`, with slot 0 on top; `ForeignProcedureOutputs::get(i)`
+reads that slot. Remove per-word reversal and old padding-order compensation in
+raw callers and MASM callees. Typed `#[account(...)]` calls are unaffected.
+
 `&T` parameters are refused before any of this, by the `#[component]` macro rather than the
 compiler frontend: `references are not supported in component interfaces or exported types`
 (`compiler:sdk/v0.15.0:sdk/base-macros/src/types.rs`). It applies to exported method
@@ -346,6 +351,9 @@ let fungible: bool = asset.is_fungible();
 let raw_amount: Felt = asset.value[0];
 let asset_id_word: Word = asset.id.inner;
 ```
+
+In SDK 0.15, `is_fungible()`, `amount()`, and the `AssetId` readers call protocol library
+procedures. Exercise them in VM/MockChain tests; native host tests that reach them fail to link.
 
 Host protocol `Asset` is also a struct, with `id() -> AssetId` and `value() -> AssetValue`.
 Use `Asset::new(id, value_word)?` or `Asset::from_id_and_value_words(id_word, value_word)?`.
@@ -587,19 +595,34 @@ have exactly one (`authentication components require exactly one #[auth_script] 
 | `active_account::has_non_fungible_asset(asset)` | `active_account::has_asset(asset_id: AssetId) -> bool` |
 | `faucet::create_fungible_asset` / `create_non_fungible_asset` / `has_callbacks` | build the `Asset` outside the transaction; only `faucet::mint(Asset)` and `faucet::burn(Asset)` remain |
 | `AttachmentLocation` | `Option<u32>` from `find_attachment` |
-| `output_note::set_attachment` | append with `output_note::add_word_attachment`, `output_note::add_attachment`, or `output_note::add_attachment_from_memory` |
+| `output_note::set_word_attachment` | `output_note::add_word_attachment` (append a new single-word attachment) |
+| `output_note::set_array_attachment` | `output_note::add_attachment` for an advice-backed commitment, or `add_attachment_from_memory` for raw words |
 
-The output-note attachment APIs append attachment entries; they do not replace an existing attachment in place.
+All three replacement operations append a new attachment; none replaces an attachment already on
+the note.
+
+In SDK 0.15, `note::write_attachment_commitments_to_memory`,
+`note::write_attachment_to_memory`, and `note::write_indexed_attachment_to_memory`
+become `load_attachment_commitments`, `load_attachment`, and `load_indexed_attachment`.
+These helpers read advice-backed committed data. The active/input/output-note wrappers
+retain their `write_*_to_memory` names.
+
+`active_account::compute_commitment` moved to `native_account::compute_commitment`,
+and from `ActiveAccount` to `NativeAccount`. Call it inside a native account
+component; an `#[account]` wrapper used by a note or transaction script has no
+equivalent method. It cannot compute a foreign account's commitment through FPI.
 
 The current `active_account` surface is `get_id() -> AccountId`, `get_nonce() -> Nonce`,
 `get_code_commitment() -> Word`, `compute_storage_commitment() ->
 Word`, `get_asset(AssetId) -> Word`, `has_asset(AssetId) -> bool`, `get_vault_root() -> Word`,
 `get_num_procedures() -> u32`, `get_procedure_root(u32) -> Word`, `has_procedure(Word) -> bool` —
-all also available on the `ActiveAccount` trait.
+all also available on the `ActiveAccount` trait, which now also has
+`has_storage_slot(StorageSlotId) -> bool` (the free function is in `storage`).
 
 Initial-state getters live on `native_account` as free functions: `get_initial_commitment()`,
 `get_initial_storage_commitment()`, `get_initial_vault_root()`, `get_initial_asset(AssetId) -> Word`,
-plus `compute_commitment()`, `compute_delta_commitment()` and `was_procedure_called(Word) -> bool`.
+plus `compute_commitment()`, `compute_delta_commitment()`, `was_procedure_called(Word) -> bool`,
+`has_state_changed() -> bool` and `has_initial_asset(AssetId) -> bool`.
 The `miden::asset` module exposes `id_into_faucet_id`, `id_into_asset_class`, and `id_into_composition`.
 Use `tx::get_reference_block_commitment()` for the reference block;
 `tx::get_block_commitment(block_number)` now queries a tracked historical block.
@@ -650,7 +673,7 @@ faucet_id_prefix]`. The actual SMT key is `AssetId::hash() -> AssetIdHash`.
 `AssetClass` is a *component of* `AssetId` — it distinguishes assets issued by the same
 faucet — not the asset id itself. Treating `AssetId` as the per-faucet class compiles and is
 silently wrong. The vault-key accessors are `Asset::id()` and `Asset::to_id_word()`, and the client
-re-exports `AssetId` (not `AssetClass`) from `miden_client::asset`.
+re-exports both `AssetId` and `AssetClass` from `miden_client::asset`.
 
 There is **no `AssetVaultKey` type** in either the protocol or the client — searching for one is a
 dead end, and a type of that name in your code or in generated bindings is stale. The vault-key type
@@ -659,8 +682,9 @@ is `AssetId`, declared at
 client at `miden-client:v0.17.2:crates/rust-client/src/lib.rs`.
 
 Guest `miden::Asset` now has `id: AssetId`; use `asset.id.inner` for its word (P7).
-Asset IDs carry version bits. Old v0.16 fungible ID words can decode as non-fungible IDs, so
-rebuild them with the current constructors instead of copying raw words.
+Asset IDs carry version bits. Old v0.16 fungible ID words no longer decode as fungible:
+the metadata byte changed from `0x01` to `0x11`. Rebuild them with current constructors
+instead of copying raw words.
 
 ## P18: `MAX_ASSETS_PER_NOTE` Is 16
 
@@ -674,23 +698,31 @@ logic, test fixtures — needs resizing.
 
 **Severity**: High — hashing the v0.16 layout can compile but produces invalid signatures
 
+`TransactionSummary::NUM_ELEMENTS` covers six words. The standards MASM matches with
+`const TX_SUMMARY_NUM_ELEMENTS = 24` and six word-sized locals
+(`SUMMARY_PARAMS_HEAD_LOC = 0`, `SUMMARY_PARAMS_TAIL_LOC = 4`,
+`SUMMARY_ACCOUNT_DELTA_LOC = 8`, `SUMMARY_INPUT_NOTES_LOC = 12`,
+`SUMMARY_OUTPUT_NOTES_LOC = 16`, `SUMMARY_BLOCK_COMMITMENT_LOC = 20`), and
+`pub proc create_tx_summary(user_params: [felt; 6])` returns six words.
+
 The v0.17 summary is still 24 felts, but the two parameter words come first. It binds a
-version (`1`) and the reference block number, leaving six user parameters:
+version (`1`) and the bound block number, leaving six user parameters. Singlesig
+binds the reference block; multisig binds `MultisigAuthArgs::bound_block_num`:
 
 ```text
-[[1, expiration_delta << 32 | reference_block_number, user_param0, user_param1],
+[[1, expiration_delta << 32 | bound_block_number, user_param0, user_param1],
  [user_param2, user_param3, user_param4, user_param5],
  ACCOUNT_DELTA_COMMITMENT, INPUT_NOTES_COMMITMENT, OUTPUT_NOTES_COMMITMENT,
- REFERENCE_BLOCK_COMMITMENT]
+ BOUND_BLOCK_COMMITMENT]
 ```
 
-Use the current standard auth components where possible. Custom guest auth must use
-`tx::get_reference_block_number()` and `tx::get_reference_block_commitment()` and hash this
-layout. Fees use the native asset from `ProtocolConfig` at rate 1/1; the old fee-conversion
-helpers are gone. Multisig must supply `MultisigAuthArgs` even on fee-free chains.
+Sources: `protocol:v0.17.1:crates/miden-protocol/src/transaction/tx_summary.rs` and
+`protocol:v0.17.1:crates/miden-standards/asm/standards/auth/mod.masm`.
 
-Sources: `protocol:v0.17.1:crates/miden-protocol/src/transaction/tx_summary.rs` and the
-[v0.17 transaction migration guide](https://docs.miden.xyz/builder/migration/transaction-changes).
+Use the current standard auth components where possible. Custom auth must hash this
+layout using the chosen bound block. Fees use the native asset from `ProtocolConfig` at
+rate 1/1; the old fee-conversion helpers are gone. Multisig must supply `MultisigAuthArgs`
+even on fee-free chains; see `rust-client-patterns` for request preparation.
 
 ## P20: Match the Project Version Line and Keep Build Tools Separate
 
@@ -791,6 +823,11 @@ valid package cache bypasses that requirement.
   regardless of debug mode, and the ones taking stack inputs consume them — strip them from
   production code. The advice-stack / advice-map printers additionally need host handlers
   registered.
+- **`trace` is available again in VM 0.35.** Use `trace.CONST` with a constant
+  defined by `event("...")`, or `trace.event("...")`; numeric immediates such as
+  `trace.5` are rejected. These forms expand to five VM operations and leave the
+  stack unchanged. Plain `trace` expands to three operations and leaves its ID
+  on the stack. Register a read-only trace handler on the host when using it.
 - **`.masl` is gone.** The artefact is a `Package` with extension `.masp` (magic `b"MASP\0"`);
   `Library` and `KernelLibrary` were deleted. `Assembler::link_package(Arc<Package>, Linkage)` and
   `Assembler::with_package(..)` are the linking entry points, kernels come in via

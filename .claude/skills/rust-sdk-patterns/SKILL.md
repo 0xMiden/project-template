@@ -5,6 +5,9 @@ description: Complete guide to writing Miden smart contracts with the Rust SDK. 
 
 # Miden Rust SDK Patterns
 
+Targets contract SDK `miden` 0.15.0 and `cargo-miden` / `midenc` 0.11.0 for Miden v0.17.
+See `rust-sdk-source-guide` for the compatible host dependencies and tagged sources.
+
 ## Three Contract Types
 
 ### Account Component (three-part pattern)
@@ -139,6 +142,13 @@ impl IncrementNote {
 
 A `#[note]` struct with fields is auto-decoded from `active_note::get_storage()`. The decoder is strict: it calls `ensure_eof()`, so surplus felts in the note's storage fail with `FeltReprError::TrailingData`. A zero-sized note type skips `get_storage()` entirely.
 
+SDK 0.15 emits a WIT storage schema: use a unit struct or named fields with a
+fixed layout. Tuple structs and `Vec` fields are rejected. Preserve field order
+when converting a tuple struct; use named records and `Option` for fixed optional
+positions. Keep one `#[note]` struct per linked artifact, including dependencies.
+For `#[export_type]`, different Rust types must have distinct WIT names, and
+`__MIDEN_EXPORT_TYPE_SHAPE` is reserved for the macro.
+
 Reference: `examples/p2id-note/src/lib.rs`, `examples/p2ide-note/src/lib.rs`, `examples/counter-note/src/lib.rs`.
 
 **Project metadata for notes:** `[lib] kind = "note"`, plus `namespace` and `path`. Conventional namespace shape is `miden:<pkg>/miden-<pkg>@0.1.0`.
@@ -269,7 +279,11 @@ self.remove_asset(asset);     // Asset is Copy, no clone needed
 
 To send assets to another account, create a P2ID output note **from an account-component method** — both `output_note::create` and `native_account::remove_asset` are account-context only, so a note or tx script cannot do this inline.
 
-P2ID storage must be `[target.suffix, target.prefix, salt_0, salt_1]`; use two zero salts unless both parties agree on a secret salt. Supply the current v0.17 `P2idNote::script_root()` from the host. An old root or two-item storage produces an unconsumable note.
+The standard P2ID storage is `[target.suffix, target.prefix, salt_0, salt_1]`. Use zero salts
+for the ordinary public recipient, or agreed secret salts for a recipient that needs them.
+Obtain the script root from the matching host `P2idNote::script_root()`. A two-item recipient
+does not satisfy the standard script. The compiler's small Rust `p2id-note` example has its
+own script root and input schema; it is not interchangeable with the standard P2ID script.
 
 The sequence is `note::build_recipient` → `output_note::create` → `remove_asset` + `output_note::add_asset`. `examples/basic-wallet/src/lib.rs` is the reference: `create_note` wraps `output_note::create`, and `move_asset_to_note` wraps the remove-then-add pair.
 
@@ -365,7 +379,7 @@ A note script reads from `active_note::*` or from typed `#[note]` fields and for
 
 The `#[note]` macro generates `TryFrom<&[Felt]>` for the note struct, so the note's serialized inputs are deserialized into typed fields before the script runs. The `#[note_script]` method receives the deserialized note as `self` (by value) and never has to index a raw Felt slice manually for new typed note scripts. Alongside the required `Word` arg, the method may optionally accept a `&Account` or `&mut Account` parameter. See [compiler/sdk/base-macros/src/lib.rs](https://github.com/0xMiden/compiler/blob/main/sdk/base-macros/src/lib.rs) for the macro contract and [compiler/sdk/base-macros/src/note.rs](https://github.com/0xMiden/compiler/blob/main/sdk/base-macros/src/note.rs) for the generated deserialization.
 
-Supported field types include `Felt`, the unsigned integer scalars (`u64`, `u32`, `u8`), `bool`, `Option<T>`, and `Vec<T>` via the `FromFeltRepr` trait (`compiler/sdk/field-repr/repr/src/lib.rs`), plus any user type that opts in with `#[derive(FromFeltRepr)]`. Do not use `Asset` or `Word` directly as note struct fields unless source inspection confirms those types implement `FromFeltRepr` for the SDK line you are using. If you need asset-shaped data inside the note, flatten it into supported scalar fields and reconstruct inside the script, or keep assets attached to the note and read them from `active_note`.
+Note fields must have a fixed WIT storage schema in SDK 0.15. Use supported scalar types and fixed-layout named records; `Option<T>` preserves a fixed optional position, but `Vec<T>` and tuple note structs are rejected even when a Felt representation exists. A custom record needs the matching exported schema as well as its Felt representation. Do not use `Asset` or `Word` directly as note struct fields unless source inspection confirms those types implement `FromFeltRepr` for the SDK line you are using. If you need asset-shaped data inside the note, flatten it into supported scalar fields and reconstruct inside the script, or keep assets attached to the note and read them from `active_note`.
 
 For dependency wiring, see "Cross-Component Dependencies" above. See [increment-note/src/lib.rs](../../../contracts/increment-note/src/lib.rs) for the project-template's local example of the `#[note] struct + #[note] impl` macro form.
 

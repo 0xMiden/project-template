@@ -87,7 +87,7 @@ build tool is intentionally outside the integration crate's Cargo graph; tests c
 package through the client, standards, and `miden-testing` dependencies.
 
 Package artefacts: the extension is `.masp` (`Package::EXTENSION`), magic `MASP\0`, package format
-version `[7, 0, 0]`. Rebuild every package after upgrading from v0.16; old MAST/package bytes are incompatible. There is no `.masl`.
+version `[7, 0, 0]`, MAST wire version `[0, 0, 4]`. There is no `.masl`. Rebuild every package after upgrading from v0.16; old package bytes are incompatible.
 
 ### 5. Create Account with Storage
 
@@ -240,6 +240,10 @@ mock_chain.prove_next_block()?;
 `From<Account>`. Pass an `Account` (rather than an id) when chaining transactions against evolving
 in-memory state, and for private accounts.
 
+Private accounts seeded at genesis are not retained in the committed-account map. Keep the
+`Account`, pass it to `build_transaction`, and apply each execution's patch to it. Use
+`committed_account(id)` only for public accounts.
+
 Input notes are **not** positional arguments. Attach them with `.authenticated_input_note(NoteId)`,
 `.authenticated_input_notes(..)`, `.unauthenticated_input_note(Note)` or
 `.unauthenticated_input_notes(..)`.
@@ -248,15 +252,16 @@ Input notes are **not** positional arguments. Attach them with `.authenticated_i
 is `async`, and returns `Result<ExecutedTransaction, TransactionExecutorError>`.
 
 Other `MockTransactionBuilder` methods: `tx_script`, `tx_script_args`, `auth_args`,
-`extend_note_args`, `reference_block`, `foreign_accounts`, `extend_advice_inputs`,
+`extend_note_args`, `reference_block`, `required_block`, `foreign_accounts`, `extend_advice_inputs`,
 `add_advice_map_entry`, `authenticator`, `add_signature`, `add_note_script`, `send_notes_script`,
 `expected_output_note(s)`, `with_source_manager`.
 
 ### 9. Execute with Transaction Script
 
-`TransactionScript::from_package(&package)?` handles a `kind = "tx-script"` package directly: if the
-package is a program it uses the entrypoint, otherwise it looks for the single procedure carrying
-the `transaction_script` attribute, which the compiler emits on tx-script exports.
+`TransactionScript::from_package(&package)?` takes a library package with exactly one
+`@transaction_script` export, as emitted by a `kind = "tx-script"` compiler project.
+Executable (`begin ... end`) packages are rejected. `NoteScript::from_package` likewise needs
+a library package with exactly one `@note_script` export.
 
 ```rust
 use miden_client::transaction::TransactionScript;
@@ -276,14 +281,15 @@ mock_chain.prove_next_block()?;
 let updated_account = mock_chain.committed_account(account.id())?;
 ```
 
-`TransactionScript::from_parts(Arc<MastForest>, MastNodeId)` exists, but it is not the path for
-compiler-produced tx-script packages — use the package-based construction shown above.
+`TransactionScript::from_parts(Arc<MastForest>, MastNodeId)` now returns a `Result`; handle
+validation errors. It is not the path for compiler-produced tx-script packages — use the
+package-based construction shown above.
 
 ### 10. Verify Storage State
 
 Read state with `account.storage().get_item(&slot)` or
 `account.storage().get_map_item(&slot, key)` on an in-memory `Account` you keep patch-current, or
-re-fetch the committed account with `mock_chain.committed_account(account.id())?` after
+re-fetch a public committed account with `mock_chain.committed_account(account.id())?` after
 `prove_next_block()`.
 
 > `get_map_item(&self, slot_name: &StorageSlotName, key: StorageMapKey)` takes a **`StorageMapKey`
@@ -339,7 +345,7 @@ Notes flow through MockChain in four steps:
 3. **Consume** through `mock_chain.build_transaction(account).authenticated_input_note(note.id())` for chain-known notes, or `.unauthenticated_input_note(note.clone())` / `.unauthenticated_input_notes(..)` when the full note must be supplied.
 4. **Verify** expected output notes with `.expected_output_note(RawOutputNote::Full(expected_note))` or `.expected_output_notes(..)` on the `MockTransactionBuilder`. `execute().await?` asserts that the produced output notes match.
 
-After `execute()` and before `add_pending_executed_transaction(...) + prove_next_block()`: if a later step will keep using the same in-memory `Account` variable, call `account.apply_patch(executed.account_patch())?` to keep the variable in sync with the chain. Post-block reads should use `mock_chain.committed_account(account.id())?`. For block advancement and reference-block semantics, see "MockChain Block Numbering" below.
+After `execute()` and before `add_pending_executed_transaction(...) + prove_next_block()`: if a later step will keep using the same in-memory `Account` variable, call `account.apply_patch(executed.account_patch())?` to keep the variable in sync with the chain. For public accounts, post-block reads can use `mock_chain.committed_account(account.id())?`; keep private account state locally and apply its execution patches. For block advancement and reference-block semantics, see "MockChain Block Numbering" below.
 
 See [counter_test.rs](../../../integration/tests/counter_test.rs) for the current project-template note consume + prove cycle. The miden-bank [withdraw_test.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/tests/withdraw_test.rs) and [deposit_test.rs](https://github.com/0xMiden/tutorials/blob/965739b626acf3c63a0e547d313859079ee03c18/examples/miden-bank/integration/tests/deposit_test.rs) provide fuller examples of multi-note flow and note-storage layout.
 
@@ -356,7 +362,7 @@ bank_account.apply_patch(executed.account_patch())?;
 ```
 
 `Account::apply_patch(&AccountPatch)` and `ExecutedTransaction::account_patch() -> &AccountPatch`
-are the account-update path. If you instead re-fetch via `mock_chain.committed_account(..)` after
+are the account-update path. For public accounts, if you instead re-fetch via `mock_chain.committed_account(..)` after
 `prove_next_block()`, you can skip the patch entirely.
 
 > **The one exception that catches people out:** `TransactionSummary::account_delta()` still returns
@@ -443,4 +449,5 @@ The contracts a test builds depend on the guest SDK `miden = { version = "0.15.0
 - [ ] Map reads pass a `StorageMapKey`, not a `Word`
 - [ ] `FungibleAsset::amount()` compared as `AssetAmount`, not a bare integer
 - [ ] Notes added to `MockChainBuilder` via `add_output_note(RawOutputNote::Full(..))` before `build()` (no `?` — it returns `()`)
+- [ ] Private account state is kept and patched locally; it is not fetched with `committed_account`
 - [ ] Faucet set up before creating assets
