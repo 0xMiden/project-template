@@ -58,17 +58,22 @@ A transaction is a **single-account state transition**. The kernel runs four pha
 
 Updating account state and producing output notes are effects of phases 2-3, not phases of their own. The thing people most often leave out of this list is that **authentication and fee payment happen in the epilogue**, after all scripts have run.
 
-**Transaction summaries are six words.** A `TransactionSummary` is what an account's authentication procedure signs, and its commitment preimage is laid out as:
+**Transaction summaries are six words, with a versioned preimage.** The signed layout is:
 
 ```text
-[ACCOUNT_DELTA_COMMITMENT, INPUT_NOTES_COMMITMENT, OUTPUT_NOTES_COMMITMENT,
- BLOCK_COMMITMENT, [expiration_delta, user_param0, user_param1, user_param2],
- [user_param3, user_param4, user_param5, user_param6]]
+[[1, expiration_delta << 32 | reference_block_number, user_param0, user_param1],
+ [user_param2, user_param3, user_param4, user_param5],
+ ACCOUNT_DELTA_COMMITMENT, INPUT_NOTES_COMMITMENT, OUTPUT_NOTES_COMMITMENT,
+ REFERENCE_BLOCK_COMMITMENT]
 ```
 
-The trailing user parameters give an auth procedure a way to bind extra data (a replay-protection salt, a maximum fee) into the same signature. A component that hashes a shorter layout **compiles and fails at runtime**; the MASM side of this constant is `TX_SUMMARY_NUM_ELEMENTS = 24` in the standard auth library.
+The two parameter words come first and there are six user parameters. Hashing the old v0.16
+layout can compile but produces an invalid signature.
 
-**Fees are paid from the authentication procedure.** The auth procedure computes the fee and funds a public `TX_FEE` note out of the account's vault before the summary is created. Callers supply the conversion data with `TransactionRequestBuilder::fee_conversion_info(conversion_info, salt)`; network accounts need a fee policy of their own.
+**Fees are paid from the authentication procedure.** The chain's `ProtocolConfig` selects the
+native fee asset, paid at rate 1/1 through `fee::pay_fee`. Sync the client before executing so it
+has this configuration. Do not use the removed `fee_conversion_info` API. Multisig additionally
+requires a `MultisigAuthArgs` preimage, even on a fee-free chain; see the v0.17 migration guide.
 
 **Important**: A two-party transfer (Alice sends Bob tokens) requires TWO transactions:
 1. Alice's transaction creates a P2ID note with tokens attached
@@ -84,9 +89,9 @@ An asset is **two words**: an identifier word and a value word. On the operand s
 - Minted and destroyed by **faucet accounts** via `faucet::mint(asset)` / `faucet::burn(asset)`, which take an already-built `Asset`. There is no in-transaction asset construction: the kernel exposes no `create_fungible_asset` / `create_non_fungible_asset`.
 - A note may carry at most **`MAX_ASSETS_PER_NOTE` = 16** assets.
 
-**`AssetId` and `AssetClass` are different things, and the names are a trap.** `AssetId` is the *unique identifier of an asset in the vault*; its Word layout is `[asset_class_suffix, asset_class_prefix, faucet_id_suffix|reserved|composition, faucet_id_prefix]`, and `AssetId::hash()` produces the `AssetIdHash` used as the vault SMT key. `AssetClass` is the narrower thing that *distinguishes different assets issued by the same faucet* — two felts, and one component of an `AssetId`. Code that treats an `AssetId` as if it were a per-faucet class (or vice versa) type-checks and is wrong.
+**`AssetId` and `AssetClass` are different things, and the names are a trap.** `AssetId` is the *unique identifier of an asset in the vault*; its Word layout is `[asset_class_suffix, asset_class_prefix, faucet_id_suffix|reserved|composition|version, faucet_id_prefix]`, and `AssetId::hash()` produces the `AssetIdHash` used as the vault SMT key. `AssetClass` is the narrower thing that *distinguishes different assets issued by the same faucet* — two felts, and one component of an `AssetId`. Code that treats an `AssetId` as if it were a per-faucet class (or vice versa) type-checks and is wrong.
 
-> **Layer note.** The Rust *contract* SDK (the guest `miden` crate) builds against an earlier protocol snapshot than the client/protocol line, and there the guest type is still `Asset { key: Word, value: Word }` with `asset.value[0]` as the fungible amount. The field is named `key`, not `id`, in guest contract code. Read the layer you are actually writing for rather than renaming across the boundary.
+> **Layer note.** Both sides now use an asset struct. The guest SDK has `Asset { id: AssetId, value: Word }`, with `asset.id.inner` exposing the ID word. The host protocol uses private `AssetId` / `AssetValue` fields with `id()` / `value()` accessors. Convert a host `FungibleAsset` with `.into()`; `Asset::Fungible` no longer exists. Asset ID metadata now includes an encoding version, so rebuild IDs instead of reusing v0.16 words.
 
 ### Felt and Word
 - **Felt**: Field element in the Goldilocks prime field (p = 2^64 - 2^32 + 1). The fundamental data unit.
@@ -101,7 +106,7 @@ An asset is **two words**: an identifier word and a value word. On the operand s
 
 | Pattern | Purpose | How It Works |
 |---------|---------|-------------|
-| **P2ID** | Send assets to a specific account | Note script checks consumer's ID matches target |
+| **P2ID** | Send assets to a specific account | Checks the consumer ID; storage is `[target_suffix, target_prefix, salt_0, salt_1]` |
 | **P2IDE** | P2ID with expiration | Adds block-height timelock; sender can reclaim after expiry |
 | **SWAP** | Atomic asset exchange | Note offers asset A, requests asset B; consumer provides B |
 | **PSWAP** | Partial-fill swap | A SWAP that can be consumed for part of the offered amount, leaving a remainder note |
@@ -123,7 +128,7 @@ Standard notes are built with typed builders rather than a `create(..)` construc
 
 **Auth**: `AuthSingleSig` dispatches on the key type, so one component handles both Falcon-512 and ECDSA-K256 keys. The Falcon-512 scheme uses Poseidon2 as its hash function and is named `Falcon512Poseidon2`. Construct it with `AuthSingleSig::new(approver)` or the typed helpers `falcon512_poseidon2(pk)` / `ecdsa_k256_keccak(pk)` / `from_public_key(pk)`.
 
-Keys are wrapped in `Approver { pub_key, auth_scheme }`, and multi-signature setups use `ApproverSet { approvers, threshold }`. There is no `AccountBuilder::with_auth_component` and no `AuthMethod` or `AuthSingleSigAcl`: auth components are added with `with_component(s)` like any other component.
+Keys are wrapped in `Approver { pub_key, auth_scheme }`, and multi-signature setups use `ApproverSet` with private fields, accessed through `approvers()` and `threshold()`. There is no `AccountBuilder::with_auth_component` and no `AuthMethod` or `AuthSingleSigAcl`: auth components are added with `with_component(s)` like any other component.
 
 The auth roster is wider than `NoAuth` + `AuthSingleSig` — `miden_standards::account::auth` also exports `AuthMultisig`, `AuthMultisigSmart`, `AuthGuardedMultisig` (each with a matching `*Config` type), and `AuthNetworkAccount`, which takes its parts directly rather than a config struct.
 

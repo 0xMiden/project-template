@@ -1,23 +1,31 @@
 //! Common helper functions for scripts and tests
 
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use miden_client::{
-    Client, Felt, Word,
     account::{
-        Account, AccountBuilder, AccountComponent, AccountType, StorageSlotName,
         component::{BasicWallet, InitStorageData, NoAuth},
+        Account, AccountBuilder, AccountComponent, AccountType, StorageSlotName,
     },
     auth::{AuthSecretKey, AuthSingleSig},
     builder::ClientBuilder,
     keystore::{FilesystemKeyStore, Keystore},
-    rpc::{Endpoint, GrpcClient},
+    store::TransactionFilter,
+    transaction::{TransactionId, TransactionStatus},
     utils::Deserializable,
+    Client, Felt, Word,
 };
 use miden_client_sqlite_store::ClientBuilderSqliteExt;
 use miden_mast_package::Package;
 use rand::Rng;
+
+pub(crate) const NETWORK_TIMEOUT: Duration = Duration::from_secs(600);
+pub(crate) const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Test setup configuration containing initialized client and keystore
 pub struct ClientSetup {
@@ -36,11 +44,6 @@ pub struct ClientSetup {
 /// Returns an error if RPC connection fails, keystore initialization fails,
 /// or client building fails
 pub async fn setup_client() -> Result<ClientSetup> {
-    // Initialize RPC connection
-    let endpoint = Endpoint::testnet();
-    let timeout_ms = 10_000;
-    let rpc_client = Arc::new(GrpcClient::new(&endpoint, timeout_ms));
-
     // Initialize keystore
     let keystore_path = std::path::PathBuf::from("../keystore");
 
@@ -49,8 +52,7 @@ pub async fn setup_client() -> Result<ClientSetup> {
 
     let store_path = std::path::PathBuf::from("../store.sqlite3");
 
-    let client = ClientBuilder::new()
-        .rpc(rpc_client)
+    let client = ClientBuilder::for_testnet()
         .sqlite_store(store_path)
         .authenticator(keystore.clone())
         .build()
@@ -75,7 +77,11 @@ pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
     let profile = if release { "--release" } else { "--debug" };
     let profile_name = if release { "release" } else { "debug" };
     let manifest_path = dir.join("Cargo.toml");
-    let artifact_path = dir.join("target").join("miden").join(profile_name).join("out.masp");
+    let artifact_path = dir
+        .join("target")
+        .join("miden")
+        .join(profile_name)
+        .join("out.masp");
 
     let args = vec![
         profile.to_string(),
@@ -91,8 +97,10 @@ pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
         bail!("Failed to compile project package. See output for details.");
     }
 
-    let package_bytes = std::fs::read(&artifact_path)
-        .context(format!("Failed to read compiled package from {}", artifact_path.display()))?;
+    let package_bytes = std::fs::read(&artifact_path).context(format!(
+        "Failed to read compiled package from {}",
+        artifact_path.display()
+    ))?;
 
     Package::read_from_bytes(&package_bytes).context("Failed to deserialize package from bytes")
 }
@@ -145,7 +153,7 @@ pub async fn create_account_from_package(
     config: AccountCreationConfig,
 ) -> Result<Account> {
     let account_component =
-        AccountComponent::from_package(package.as_ref(), &config.init_storage_data)
+        AccountComponent::from_package(Arc::unwrap_or_clone(package), &config.init_storage_data)
             .context("Failed to create account component from package")?;
 
     let mut init_seed = [0_u8; 32];
@@ -154,11 +162,11 @@ pub async fn create_account_from_package(
     let account = AccountBuilder::new(init_seed)
         .account_type(config.account_type)
         .with_component(account_component)
+        // Receive faucet notes to pay transaction fees.
+        .with_component(BasicWallet)
         .with_component(NoAuth)
         .build()
         .context("Failed to build account")?;
-
-    println!("Account ID: {:?}", account.id());
 
     client
         .add_account(&account, false)
@@ -195,7 +203,9 @@ pub async fn create_basic_wallet_account(
         .with_component(AuthSingleSig::from_public_key(key_pair.public_key()))
         .with_component(BasicWallet);
 
-    let account = builder.build().context("Failed to build basic wallet account")?;
+    let account = builder
+        .build()
+        .context("Failed to build basic wallet account")?;
 
     client
         .add_account(&account, false)
@@ -208,6 +218,43 @@ pub async fn create_basic_wallet_account(
         .context("Failed to add key to keystore")?;
 
     Ok(account)
+}
+
+/// Wait until a submitted transaction is committed on chain.
+///
+/// # Errors
+/// Returns an error if syncing fails, the transaction is discarded, or the wait times out.
+pub async fn wait_for_commit(
+    client: &mut Client<FilesystemKeyStore>,
+    tx_id: TransactionId,
+) -> Result<()> {
+    let started = Instant::now();
+    loop {
+        client.sync_state().await?;
+        let records = client
+            .get_transactions(TransactionFilter::Ids(vec![tx_id]))
+            .await?;
+        if let Some(record) = records.first() {
+            match &record.status {
+                TransactionStatus::Committed { block_number, .. } => {
+                    println!(
+                        "Transaction {} committed in block {block_number}",
+                        tx_id.to_hex()
+                    );
+                    return Ok(());
+                }
+                TransactionStatus::Discarded(cause) => {
+                    bail!("Transaction {tx_id} discarded: {cause}")
+                }
+                TransactionStatus::Pending => {}
+            }
+        }
+        ensure!(
+            started.elapsed() < NETWORK_TIMEOUT,
+            "Timed out waiting for transaction {tx_id}"
+        );
+        tokio::time::sleep(POLL_INTERVAL).await;
+    }
 }
 
 fn miden_build(args: impl IntoIterator<Item = String>) -> anyhow::Result<std::process::ExitStatus> {
@@ -230,7 +277,11 @@ fn miden_build(args: impl IntoIterator<Item = String>) -> anyhow::Result<std::pr
     };
     cmd.arg("build").args(args);
 
-    let mut child = cmd.spawn().map_err(|err| anyhow!("Failed to spawn build command: {err}"))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|err| anyhow!("Failed to spawn build command: {err}"))?;
 
-    child.wait().map_err(|err| anyhow!("Build command failed: {err}"))
+    child
+        .wait()
+        .map_err(|err| anyhow!("Build command failed: {err}"))
 }

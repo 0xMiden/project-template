@@ -87,7 +87,7 @@ supported-types = ["RegularAccountImmutableCode"]
 
 `supported-types` also accepts `"RegularAccountUpdatableCode"` and the faucet kinds `["FungibleFaucet", "NonFungibleFaucet"]`.
 
-The project-template contract `Cargo.toml` files currently use `edition = "2021"`, `crate-type = ["cdylib"]`, and published `miden` / `miden-sdk-build-script-support` `0.14` dependencies. Copy the local manifests unless intentionally changing the template line:
+The project-template contract `Cargo.toml` files currently use `edition = "2021"`, `crate-type = ["cdylib"]`, and published `miden` / `miden-sdk-build-script-support` `0.15.0` dependencies. Copy the local manifests unless intentionally changing the template line:
 
 ```toml
 [package]
@@ -99,10 +99,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-miden = { version = "0.14" }
+miden = { version = "0.15.0" }
 
 [build-dependencies]
-miden-sdk-build-script-support = { version = "0.14" }
+miden-sdk-build-script-support = { version = "0.15.0" }
 ```
 
 Contracts build on `nightly-2026-09-01` with target `wasm32-wasip2`. Use the midenup / cargo-miden command documented in this repository's `README.md` and `CLAUDE.md`; the local `build.rs` calls `miden_sdk_build_script_support::prepare_package_cache()` so source dependencies are available to the SDK macros during Cargo checks and IDE analysis.
@@ -207,13 +207,13 @@ See the rust-sdk-pitfalls skill (P5) for more on slot naming.
 
 | Module | Key Functions | Purpose |
 |--------|--------------|---------|
-| `native_account::` | `add_asset(Asset) -> Word`, `remove_asset(Asset) -> Word`, `incr_nonce() -> Nonce`, `get_id() -> AccountId`, `get_initial_asset(Word) -> Word`, `get_initial_commitment() -> Word`, `was_procedure_called(Word) -> bool`, `compute_delta_commitment() -> Word` | Modify / read the native account |
-| `active_account::` | `get_id() -> AccountId`, `get_nonce() -> Nonce`, `get_asset(asset_key: Word) -> Word`, `has_asset(asset_id: Word) -> bool`, `get_vault_root() -> Word`, `get_num_procedures() -> u32`, `get_procedure_root(u32) -> Word`, `has_procedure(Word) -> bool` | Query the active account |
+| `native_account::` | `add_asset(Asset) -> Word`, `remove_asset(Asset) -> Word`, `incr_nonce() -> Nonce`, `get_id() -> AccountId`, `get_initial_asset(AssetId) -> Word`, `get_initial_commitment() -> Word`, `was_procedure_called(Word) -> bool`, `compute_delta_commitment() -> Word` | Modify / read the native account |
+| `active_account::` | `get_id() -> AccountId`, `get_nonce() -> Nonce`, `get_asset(asset_id: AssetId) -> Word`, `has_asset(asset_id: AssetId) -> bool`, `get_vault_root() -> Word`, `get_num_procedures() -> u32`, `get_procedure_root(u32) -> Word`, `has_procedure(Word) -> bool` | Query the active account |
 | `active_note::` | `get_storage() -> Vec<Felt>`, `get_initial_assets() -> Vec<Asset>`, `get_sender() -> AccountId`, `get_recipient() -> Recipient`, `get_metadata() -> NoteMetadata`, `find_attachment(Felt) -> Option<u32>`, `write_attachment_to_memory(u32) -> Vec<Word>` | Query the note being consumed |
 | `note::` | `build_recipient(Word, Word, Vec<Felt>) -> Recipient` | Build note recipients from serial number, script root, and note storage |
 | `output_note::` | `create(Tag, NoteType, Recipient) -> NoteIdx`, `add_asset(Asset, NoteIdx)`, the `*_attachment` family | Create output notes |
 | `faucet::` | `mint(Asset)`, `burn(Asset)` | Move assets in and out of existence |
-| `tx::` | `get_block_number() -> BlockNumber`, `get_block_timestamp() -> u32`, `get_num_input_notes() -> u32`, `get_num_output_notes() -> u32`, `get_expiration_block_delta() -> u16`, `update_expiration_block_delta(u16)`, `execute_foreign_procedure(..)` | Transaction context and FPI |
+| `tx::` | `get_reference_block_number() -> BlockNumber`, `get_block_timestamp() -> u32`, `get_num_input_notes() -> u32`, `get_num_output_notes() -> u32`, `get_expiration_block_delta() -> u16`, `update_expiration_block_delta(u16)`, `execute_foreign_procedure(..)` | Transaction context and FPI |
 | Intrinsics | `assert(Felt)`, `assertz(Felt)`, `assert_eq(Felt, Felt)` | Validation (`assert` fails unless the felt equals 1; `assertz` fails unless it equals 0) |
 
 `add_asset`, `remove_asset` and the `active_account` queries are also trait methods auto-implemented on the `#[component_storage]` struct, so the idiomatic body is `self.add_asset(asset)` rather than the free function.
@@ -226,9 +226,9 @@ See the rust-sdk-pitfalls skill (P5) for more on slot naming.
 
 ### Balances and asset construction
 
-There is no `active_account::get_balance`. Read the asset value word with `active_account::get_asset(asset_key)` (or `native_account::get_initial_asset(asset_key)` for the pre-transaction value) and take the fungible amount from it; test membership with `active_account::has_asset(asset_id)`.
+There is no `active_account::get_balance`. Read the asset value word with `active_account::get_asset(asset_id)` (or `native_account::get_initial_asset(asset_id)` for the pre-transaction value) and take the fungible amount from it; test membership with `active_account::has_asset(asset_id)`.
 
-There is also no in-transaction asset construction: `faucet::create_fungible_asset`, `create_non_fungible_asset`, `has_callbacks` and the whole `asset` module are gone. `faucet::mint` and `faucet::burn` take an already-built `Asset`.
+There is also no in-transaction asset construction: `faucet::create_fungible_asset`, `create_non_fungible_asset` and `has_callbacks` are gone. The `miden::asset` module provides `id_into_faucet_id`, `id_into_asset_class`, and `id_into_composition` for reading an `AssetId`. `faucet::mint` and `faucet::burn` take an already-built `Asset`.
 
 ## Asset Handling
 
@@ -236,14 +236,14 @@ There is also no in-transaction asset construction: `faucet::create_fungible_ass
 
 ```rust
 pub struct Asset {
-    pub key: Word,
+    pub id: AssetId,
     pub value: Word,
 }
 ```
 
-**Constructor**: `Asset::new(key, value)` builds an Asset from its two words (the arguments are `impl Into<Word>`).
+**Constructor**: `Asset::new(id, value)` takes `impl Into<AssetId>` and `impl Into<Word>`. Existing word arguments still convert into the typed ID.
 
-The guest field is literally named `key`, but the word it holds is the protocol's **asset ID** — the vault's unique identifier for the asset. Read `asset.key` as "the asset-ID word".
+The guest field is `id: AssetId`; access its underlying word as `asset.id.inner`. Vault queries accept the typed `AssetId`.
 
 For fungible assets the amount lives in `asset.value[0]`. Prefer the typed accessors over raw felt maths:
 
@@ -256,7 +256,7 @@ let fungible: bool = asset.is_fungible();
 let amount_felt = asset.value[0];
 
 // Keep the asset-ID word if you need to persist or compare the asset
-let asset_id = asset.key;
+let asset_id_word: Word = asset.id.inner;
 
 // Vault operations (component methods only — see pitfall P11)
 self.add_asset(asset);
@@ -268,6 +268,8 @@ self.remove_asset(asset);     // Asset is Copy, no clone needed
 ## P2ID Output Note Creation
 
 To send assets to another account, create a P2ID output note **from an account-component method** — both `output_note::create` and `native_account::remove_asset` are account-context only, so a note or tx script cannot do this inline.
+
+P2ID storage must be `[target.suffix, target.prefix, salt_0, salt_1]`; use two zero salts unless both parties agree on a secret salt. Supply the current v0.17 `P2idNote::script_root()` from the host. An old root or two-item storage produces an unconsumable note.
 
 The sequence is `note::build_recipient` → `output_note::create` → `remove_asset` + `output_note::add_asset`. `examples/basic-wallet/src/lib.rs` is the reference: `create_note` wraps `output_note::create`, and `move_asset_to_note` wraps the remove-then-add pair.
 
@@ -290,7 +292,7 @@ The `[dependencies]` entry is required. A component's WIT is embedded in its com
 
 ```toml
 [build-dependencies]
-miden-sdk-build-script-support = { version = "0.14" }
+miden-sdk-build-script-support = { version = "0.15.0" }
 ```
 
 ```rust
@@ -405,7 +407,7 @@ Note side (`examples/p2id-note/src/lib.rs`): the note declares `#[account(basic_
 - [ ] Every externally-callable trait method carries `#[account_procedure]`, on the **trait**, not the impl
 - [ ] `#[account_procedure]` and `#[auth_script]` are not combined in one component
 - [ ] The `#[account(...)]` wrapper struct name differs from every generated trait name
-- [ ] Contract `Cargo.toml` matches the local template shape: `edition = "2021"`, `crate-type = ["cdylib"]`, `miden = { version = "0.14" }`, and matching `miden-sdk-build-script-support = { version = "0.14" }`
+- [ ] Contract `Cargo.toml` matches the local template shape: `edition = "2021"`, `crate-type = ["cdylib"]`, `miden = { version = "0.15.0" }`, and matching `miden-sdk-build-script-support = { version = "0.15.0" }`
 - [ ] `[lib]` in `miden-project.toml` has `kind` (`account-component` / `note` / `tx-script`), `namespace`, **and `path`**
 - [ ] `[dependencies]` in `miden-project.toml` carries `miden-core = "*"` and `miden-protocol = "*"`
 - [ ] Typed storage uses `StorageValue<T>` / `StorageMap<K, V>` with `get()` / `set()`; slot names derive from `<package>::<namespace-interface>::<field>`

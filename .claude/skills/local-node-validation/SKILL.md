@@ -27,7 +27,10 @@ MockChain simplifies execution in ways that hide real-world failures:
 
 ## Step 1: Clean State and Start Local Node
 
-**Every node session must start from clean state.** Stale store files and keystore directories cause conflicts, deserialization errors, and misleading test results. Always wipe before starting. Serialized artifacts do not round-trip across protocol versions -- the MAST wire format is `[0, 0, 4]` and the package format is `[6, 0, 0]` -- so a fresh store is required after any version change. The helper script does `rm -rf "$DATA"` on every start for exactly this reason.
+Use a fresh, disposable node and client store for migration validation. v0.16 stores and
+exports do not carry over to v0.17, and packages now use format `[7, 0, 0]`. Keep real keys
+and state outside the test script's data directory: the script wipes its disposable data
+on startup. Rebuild all contract packages with the v0.17 toolchain.
 
 The simplest path is the client's `make start-node` target, which runs the bundled `scripts/start-test-node.sh` helper: it installs the node binaries (pinned to your `Cargo.lock`), generates genesis, bootstraps each component, and starts the split topology for you:
 
@@ -40,54 +43,21 @@ make start-node-background   # returns once RPC is ready (used by CI)
 
 This brings up the four-component topology and exposes the RPC on `127.0.0.1:57291` (the client default, `MIDEN_NODE_PORT`).
 
-If you run the node binaries directly instead of via `make start-node`, the shape is below. Treat it as a reference skeleton, not a copy-paste recipe: it omits details the script handles for you (it does not show generating the genesis config the validator bootstraps from, and it leaves out the shared network-tx auth header that the sequencer and ntx-builder must agree on or the sequencer rejects the ntx-builder's transactions). Verify every subcommand and flag against `--help` for your node version, or just use `make start-node`.
+Use the released client's [start-test-node.sh](https://github.com/0xMiden/rust-sdk/blob/v0.17.2/scripts/start-test-node.sh)
+as the source of truth for direct launch commands. v0.17 genesis needs account configuration,
+a native faucet, a funding account, and validator keys; the validator also needs threshold
+storage-key material. The script supplies insecure fixtures only for disposable local tests,
+handles readiness checks, and deploys a fee collector when fees are enabled.
+
+The script defaults to a verification base fee of 500. For a fee-free counter smoke test:
 
 ```bash
-# 0. Build the genesis block ONCE with the dedicated `genesis` subcommand.
-#    (The genesis.toml it consumes is produced by the client's `gen-genesis` binary:
-#     cargo build --release -p test-node-genesis --bin gen-genesis
-#     ./target/release/gen-genesis <data>/genesis-config)
-miden-validator genesis \
-  --genesis-block-directory <data>/genesis --accounts-directory <data>/accounts \
-  --config <data>/genesis-config/genesis.toml
-
-# 1. Bootstrap each component from that genesis block. All three take --genesis.
-#    Create each component's data directory first -- they open their SQLite DB
-#    directly and do not mkdir it for you.
-miden-validator   bootstrap --data-directory <data>/validator   --genesis <data>/genesis/genesis.dat
-miden-node        bootstrap --data-directory <data>/node        --genesis <data>/genesis/genesis.dat
-miden-ntx-builder bootstrap --data-directory <data>/ntx-builder --genesis <data>/genesis/genesis.dat
-
-# 2. Start the components in order: validator, then sequencer (which carries the RPC)
-#    and prover, then ntx-builder. The sequencer and ntx-builder must agree on the
-#    network-tx auth header or the sequencer rejects the ntx-builder's transactions.
-#    The validator requires threshold storage-key material to start at all.
-miden-validator start --listen 127.0.0.1:50101 --data-directory <data>/validator \
-  --storage-key.epoch <64 hex chars> \
-  --storage-key.setup-context  <keydir>/setup-context.wire \
-  --storage-key.public-key-set <keydir>/public-key-set.wire \
-  --storage-key.secret-share   <keydir>/secret-share.wire
-
-miden-node sequencer --rpc.listen 127.0.0.1:57291 --data-directory <data>/node \
-  --validator.url http://127.0.0.1:50101 --ntx-builder.url http://127.0.0.1:50301 \
-  --block.interval 3s --batch.interval 1s \
-  --rpc.network-tx-auth-header-value "$NETWORK_TX_AUTH" \
-  --rpc.rate-limit.burst-size 10000 --rpc.rate-limit.replenish-per-second 10000
-
-miden-remote-prover --kind=transaction --port=50051
-
-miden-ntx-builder start --listen 127.0.0.1:50301 --rpc.url http://127.0.0.1:57291 \
-  --tx-prover.url http://127.0.0.1:50051 --data-directory <data>/ntx-builder \
-  --rpc.auth-header-value "$NETWORK_TX_AUTH" --max-cycles $((1 << 18))
+MIDEN_VERIFICATION_BASE_FEE=0 make start-node-background
 ```
 
-Three things here bite hard if you skip them:
-
-- **The validator will not start without threshold storage-key material.** The client vendors insecure development fixtures for exactly this at `scripts/testdata/insecure-golden-storage-key/`. Never use those outside a local test node.
-- **Without the rate-limit bump, an integration run gets throttled** by the sequencer's default limiter and starts failing in ways that look like network flakiness.
-- **Start ordering matters.** The script sleeps ~2s after the validator and again after the sequencer, then polls the RPC socket for up to 60 seconds.
-
-Tear down with `make stop-node` (`scripts/stop-test-node.sh`), which kills by pid file and falls back to `pkill` on the installed binary paths.
+For fee-charging validation, keep the defaults and fund/register accounts using the matching
+client/node tooling before submission. Do not expect a fresh empty wallet to pay fees.
+Stop only the test infrastructure you started, using `make stop-node` in that client checkout.
 
 ### Private notes need a separate service
 
@@ -97,7 +67,7 @@ Tear down with `make stop-node` (`scripts/stop-test-node.sh`), which kills by pi
 .note_transport(Arc::new(GrpcNoteTransportClient::new(url, timeout_ms)))
 ```
 
-**This clean-start sequence is mandatory every time.** Do not attempt to reuse state from a previous session.
+Keep the RPC and note transport on the same stable v0.17 release line. Use fresh state when changing protocol versions or genesis.
 
 ## Step 2: Add a localhost client helper
 
@@ -143,15 +113,15 @@ Imports: `use miden_client::rpc::{Endpoint, GrpcClient, VerifyingRpcClient};`.
 
 `build()` fails with `ClientInitializationError` if **either** the RPC client or the store is missing — they are two independent checks, so supplying only one is not enough.
 
-Use separate paths (`local-keystore/`, `local-store.sqlite3`) to avoid contaminating testnet state.
+Use separate paths (`local-keystore/`, `local-store.sqlite3`) to avoid mixing local validation with testnet state.
 
 ## Step 3: Create a local validation binary
 
-Add a local validation binary alongside your existing network/testnet validation binary, mirroring its structure but swapping in `setup_local_client()`. Pick any conventional name for it (for example `validate_local`) -- adjust to your repo's binary layout.
+Add a local validation binary alongside your existing network validation binary, mirroring its structure but swapping in `setup_local_client()`. Pick any conventional name for it (for example `validate_local`) -- adjust to your repo's binary layout.
 
 The binary must:
 1. Call `setup_local_client()` instead of the network setup function
-2. Sync state: `client.sync_state().await?`. This is **mandatory before the first submit**, not just good hygiene: transaction inputs are sealed against chain state, and a client that has not synced genesis and the chain tip cannot resolve the encryption key.
+2. Sync state: `client.sync_state().await?` before the first submission to obtain genesis, the chain tip, encryption keys, and `ProtocolConfig`. The native fee asset comes from this configuration.
 3. Build contracts (same as the existing binary)
 4. Create accounts, create notes, submit transactions
 5. Sync again after each transaction submission
@@ -168,7 +138,7 @@ Key differences from the network binary:
 
 Ensure clean client state before running (the node should already be clean from Step 1):
 ```bash
-rm -rf local-keystore/ local-store.sqlite3
+# Use fresh disposable paths; preserve any real keys/state before resetting them.
 cargo run --bin <your-local-validation-binary> --release
 ```
 
@@ -211,6 +181,6 @@ Look for:
 | Private notes never arrive | No note transport configured | `ClientBuilder::for_localhost()` sets none — run `make start-note-transport` and pass `.note_transport(..)` |
 | Transaction rejected | Invalid proof or state | Check contract code, reset node data, try again |
 | Account not found after creation | Haven't synced | Call `sync_state()` after account creation |
-| Store errors or deserialization failures | Stale state from previous session (or artifacts from an earlier protocol version, which do not round-trip) | Wipe the node data, keystore, and client store, then re-bootstrap from a fresh genesis |
+| Store errors or deserialization failures | Stale state from previous session (or artifacts from an earlier protocol version, which do not round-trip) | Preserve real keys/state, then use fresh disposable node and client paths with matching v0.17 genesis |
 | `.sqlite_store(..)` does not compile | Extension trait not in scope | `use miden_client_sqlite_store::ClientBuilderSqliteExt;` |
 | Block not produced | Node produces blocks on the sequencer's configured cadence | Submit a transaction; check the sequencer's `--block.interval` (and `--batch.interval`) settings, or consult `miden-node sequencer --help` |

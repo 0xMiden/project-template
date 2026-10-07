@@ -10,6 +10,16 @@ Before getting started, ensure you have the following prerequisites:
 
 2. **Install midenup toolchain** - Follow the installation instructions at: <https://github.com/0xMiden/midenup>
 
+This template targets Miden v0.17. Install the toolchain selected by
+`miden-toolchain.toml`:
+
+```bash
+midenup install 0.17.0
+```
+
+When upgrading from v0.16, rebuild contract packages and start with a fresh
+client store. See the [v0.17 migration guide](https://docs.miden.xyz/builder/migration).
+
 ## **Structure**
 
 ```text
@@ -100,10 +110,17 @@ by the `CARGO_MIDEN` environment variable).
 
 ### Run a Binary
 
+The example uses testnet and stores client state in `store.sqlite3`. It prints
+two account IDs and waits for funding. While it runs, request public funding
+notes for both IDs at the [testnet faucet](https://faucet.testnet.miden.io/).
+The `funding.rs` helper consumes those notes to pay transaction fees. The example
+then publishes and consumes the increment note, waits for confirmation, and
+checks that the counter is `1`. The MockChain test below needs no network funding.
+
 ```bash
 # Navigate to integration crate and run a binary
 cd integration
-cargo run --bin increment_count
+cargo run --release --bin increment_count
 ```
 
 ### Run Tests
