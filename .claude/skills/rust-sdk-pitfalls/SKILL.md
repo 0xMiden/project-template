@@ -5,11 +5,11 @@ description: Critical pitfalls and safety rules for Miden Rust SDK development. 
 
 # Miden SDK Pitfalls
 
-Verified against project-template's current v16 line: contract SDK `miden` and
-`miden-sdk-build-script-support` `0.14` (published `0.14.0`) on `nightly-2026-09-01`,
-`cargo-miden` `0.10.0` through midenup / cargo-miden, `Cargo.lock` resolving
-protocol/standards/testing `0.16.0-rc.6`, `miden-client` `0.16.0-rc.2`, and VM/package crates
-`0.29.4`.
+Verified against project-template's current v17 line: contract SDK `miden` and
+`miden-sdk-build-script-support` `0.15.0` (published `0.15.0`) on `nightly-2026-09-01`,
+`cargo-miden` `0.11.0` through midenup / cargo-miden, `Cargo.lock` resolving
+protocol/standards/testing `0.17.1`, `miden-client` `0.17.2`, and VM/package crates
+`0.35.0`.
 
 ## P1: Felt Arithmetic is Modular (SECURITY CRITICAL)
 
@@ -63,7 +63,7 @@ if balance.as_canonical_u64() > threshold.as_canonical_u64() { ... }
 on this directly:
 
 ```rust
-let block_number = tx::get_block_number();          // BlockNumber
+let block_number = tx::get_reference_block_number();          // BlockNumber
 let timelock_height = BlockNumber::try_from(inputs[3]).unwrap();
 assert!(block_number >= timelock_height);           // integer comparison, correct as written
 ```
@@ -81,14 +81,14 @@ govern that boundary, and conflating them is the actual pitfall:
 - **`MAX_DIRECT_STACK_FELTS = 16`** — a **felt budget**, measured after `u64` values expand to two
   felts each and any result pointer is added.
 
-Both live in `compiler:sdk/v0.14.0:frontend/wasm/src/component/types/mod.rs:44-62`, whose own
+Both live in `compiler:sdk/v0.15.0:frontend/wasm/src/component/types/mod.rs`, whose own
 doc comment spells out the distinction: the felt budget "is a Miden VM constraint, distinct from the
 spec's count-based `MAX_FLAT_PARAMS`: a signature can stay within 16 flat values while 64-bit values
 expand it past 16 stack felts."
 
 Exceeding **either** limit makes canonical-ABI flattening replace the whole parameter list with a
 single pointer to a tuple in linear memory — `flat_params_need_tuple` is an **OR**
-(`compiler:sdk/v0.14.0:frontend/wasm/src/component/flat.rs:212-217,263-270`):
+(`compiler:sdk/v0.15.0:frontend/wasm/src/component/flat.rs`):
 
 ```rust
 flat_params.len() > MAX_FLAT_PARAMS
@@ -102,7 +102,7 @@ What happens to that pointer is where the two sides of the boundary part ways.
 
 The critical subtlety: `plan_fpi_call` does **not** reuse the OR above. It re-derives the call shape
 from the flat-value **count alone**
-(`compiler:sdk/v0.14.0:frontend/wasm/src/component/lower_imports.rs:330-351`):
+(`compiler:sdk/v0.15.0:frontend/wasm/src/component/lower_imports.rs`):
 
 ```rust
 let has_arg_ptr = flattened_params.len() > MAX_FLAT_PARAMS;
@@ -129,19 +129,19 @@ fn echo_six_u64_record(&self, input: SixU64Record) -> SixU64Record;
 ```
 
 That is the compiler's own negative test,
-`compiler:sdk/v0.14.0:tests/integration-network/src/mockchain/fpi/note/six_u64_struct.rs:5-13`
+`compiler:sdk/v0.15.0:tests/integration-network/src/mockchain/fpi/note/six_u64_struct.rs`
 (`#[should_panic(expected = "direct FPI calls support at most 16")]`).
 
 **Above 16 flat values the indirect path is supported** — `has_arg_ptr` is true, the felt-budget
 check is skipped entirely, and the wrapper reloads the tuple so the backend still sees a direct,
 felt-only call
-(`compiler:sdk/v0.14.0:frontend/wasm/src/component/lower_imports.rs:439-508`). A
+(`compiler:sdk/v0.15.0:frontend/wasm/src/component/lower_imports.rs`). A
 22-flat-parameter FPI import is a **passing** test
-(`compiler:sdk/v0.14.0:tests/integration-network/src/mockchain/fpi/note/sixteen_flattened_params_struct.rs`).
+(`compiler:sdk/v0.15.0:tests/integration-network/src/mockchain/fpi/note/sixteen_flattened_params_struct.rs`).
 
 **Indirect is not unbounded, though.** The FPI executor imposes its own caps, checked after the
-shape is settled (`compiler:sdk/v0.14.0:frontend/wasm/src/component/lower_imports.rs:381-399`),
-with values from `ExecFpi` (`compiler:sdk/v0.14.0:dialects/hir/src/ops/invoke.rs:160-169`):
+shape is settled (`compiler:sdk/v0.15.0:frontend/wasm/src/component/lower_imports.rs`),
+with values from `ExecFpi` (`compiler:sdk/v0.15.0:dialects/hir/src/ops/invoke.rs`):
 
 | bound | value | diagnostic |
 | --- | --- | --- |
@@ -162,7 +162,7 @@ storage key, a note index, a commitment) and let the callee load the rest itself
 
 On the export side the tuple pointer is produced the same way but then refused, so **either** an
 over-16 flat-value count **or** an over-16 felt budget fails
-(`compiler:sdk/v0.14.0:frontend/wasm/src/component/lift_exports.rs:68-74`):
+(`compiler:sdk/v0.15.0:frontend/wasm/src/component/lift_exports.rs`):
 
 ```
 component export lifting for '{path}' is not yet implemented for passing the
@@ -184,13 +184,18 @@ fn process(batch_commitment: Word) { ... }
 
 Export **return** values are capped separately, at 16 loaded *values* (a count, with no felt-budget
 check at all — a record of nine `u64` fields is 9 values but 18 felts and is not caught):
-`compiler:sdk/v0.14.0:frontend/wasm/src/component/lift_exports.rs:281-286`.
+`compiler:sdk/v0.15.0:frontend/wasm/src/component/lift_exports.rs`.
 
 ### Unrelated, but adjacent
 
+**Raw FPI ordering changed in SDK 0.15.** `ForeignProcedureInputs::new(values)`
+puts `values[i]` in slot `i`, with slot 0 on top; `ForeignProcedureOutputs::get(i)`
+reads that slot. Remove per-word reversal and old padding-order compensation in
+raw callers and MASM callees. Typed `#[account(...)]` calls are unaffected.
+
 `&T` parameters are refused before any of this, by the `#[component]` macro rather than the
 compiler frontend: `references are not supported in component interfaces or exported types`
-(`compiler:sdk/v0.14.0:sdk/base-macros/src/types.rs:102-106`). It applies to exported method
+(`compiler:sdk/v0.15.0:sdk/base-macros/src/types.rs`). It applies to exported method
 parameters, return types, and exported struct/enum fields alike — `&self` receivers are fine.
 
 ## P4: Storage API Is Typed, and a Component Is Three Parts
@@ -284,11 +289,11 @@ requires a `miden-project.toml` next to the crate's `Cargo.toml`: storage slot n
 `[lib].namespace` interface segment. ``
 
 **Caveat (toolchain-version dependent)**: this naming is a property of the Rust SDK contract macros
-in the `miden-base-macros` crate, which ships at published `0.14.0` alongside `miden`, `miden-base`,
+in the `miden-base-macros` crate, which ships at published `0.15.0` alongside `miden`, `miden-base`,
 `miden-base-sys`, `miden-stdlib-sys` and `miden-sdk-alloc`. The separate compiler / `midenc` /
-`cargo-miden` workspace is `0.10.0`. Neither is the protocol/network version: protocol,
-`miden-standards` and `miden-testing` resolve to `0.16.0-rc.6`, `miden-client` resolves to
-`0.16.0-rc.2`, and the VM/package crates resolve to `0.29.4`. See P20 for the full version matrix.
+`cargo-miden` workspace is `0.11.0`. Neither is the protocol/network version: protocol,
+`miden-standards` and `miden-testing` resolve to `0.17.1`, `miden-client` resolves to
+`0.17.2`, and the VM/package crates resolve to `0.35.0`. See P20 for the full version matrix.
 Verify slot names against your installed toolchain rather than assuming a protocol version implies a
 macro behavior.
 
@@ -306,9 +311,9 @@ All contract code must be `#![no_std]`. Forgetting this or using std types cause
 ```
 
 Both lines appear before any code in the SDK examples — see
-`compiler:sdk/v0.14.0:examples/counter-contract/src/lib.rs`,
-`compiler:sdk/v0.14.0:examples/basic-wallet/src/lib.rs` and
-`compiler:sdk/v0.14.0:examples/p2id-note/src/lib.rs`. Most of them lead with an explanatory
+`compiler:sdk/v0.15.0:examples/counter-contract/src/lib.rs`,
+`compiler:sdk/v0.15.0:examples/basic-wallet/src/lib.rs` and
+`compiler:sdk/v0.15.0:examples/p2id-note/src/lib.rs`. Most of them lead with an explanatory
 `// Do not link against libstd ...` comment first, so match the two attributes, not the first line.
 
 **For heap allocation (Vec, String, Box):**
@@ -319,44 +324,43 @@ use alloc::vec::Vec;
 
 **Toolchain**: current project-template contract crates use `nightly-2026-09-01` with target
 `wasm32-wasip2`; the published SDK and `cargo-miden` line require Rust 1.99. Local contract
-`Cargo.toml` files use `edition = "2021"`, `crate-type = ["cdylib"]`, `miden = { version = "0.14" }`,
-and matching `miden-sdk-build-script-support = { version = "0.14" }`.
+`Cargo.toml` files use `edition = "2021"`, `crate-type = ["cdylib"]`, `miden = { version = "0.15.0" }`,
+and matching `miden-sdk-build-script-support = { version = "0.15.0" }`.
 
 ## P7: Rust SDK `Asset` Is Two Words (ID + Value)
 
-**Severity**: Medium — reconstructing an asset from raw `asset.inner[...]` offsets is wrong
+**Severity**: Medium — guest and host assets have different Rust representations
 
-In the Rust SDK (`miden::Asset` / `miden_base_sys::bindings::Asset`), an `Asset` is encoded as two words:
+The guest SDK uses:
 
 ```rust
 pub struct Asset {
-    pub key: Word,
+    pub id: AssetId,
     pub value: Word,
 }
 ```
 
-The field is literally named `key`, but the word it holds is the **asset-ID word** at the protocol
-layer (see P17). Construct with `Asset::new(key: impl Into<Word>, value: impl Into<Word>)`.
+Construct it with `Asset::new(id: impl Into<AssetId>, value: impl Into<Word>)`. The old
+`key` field is now `id`, and `asset.id.inner` exposes the underlying word. Vault queries take
+an `AssetId`, including `active_account::get_asset`, `has_asset`, and
+`native_account::get_initial_asset`.
 
 ```rust
-// Preferred accessors — validated, and integer-ordered
-let amount: AssetAmount = asset.amount();   // panics if non-fungible or out of range
+let amount: AssetAmount = asset.amount(); // panics for non-fungible/out-of-range amounts
 let fungible: bool = asset.is_fungible();
-
-// Raw access when you need the words themselves
-let raw_amount: Felt = asset.value[0];      // fungible amount lives here
-let asset_id_word: Word = asset.key;        // persist or compare the asset class
+let raw_amount: Felt = asset.value[0];
+let asset_id_word: Word = asset.id.inner;
 ```
 
-Use `asset.key` / `asset.value` (or the accessors above) rather than reconstructing an asset from raw `asset.inner[...]` offsets.
+In SDK 0.15, `is_fungible()`, `amount()`, and the `AssetId` readers call protocol library
+procedures. Exercise them in VM/MockChain tests; native host tests that reach them fail to link.
 
-**SDK vs protocol `Asset`**: the two-word `{key, value}` form is the Rust SDK ABI type. At the
-protocol layer, `Asset` is an enum `{ Fungible(FungibleAsset), NonFungible(NonFungibleAsset) }` and
-the vault words come from `Asset::to_id_word()` and `Asset::to_value_word()`. There is no
-`to_key_word()` — that name does not exist anywhere in the protocol source. Related protocol
-accessors: `Asset::id() -> AssetId`, `Asset::from_id_and_value(AssetId, Word)`,
-`Asset::from_id_and_value_words(Word, Word)`, `Asset::as_elements() -> [Felt; 8]`.
-`FungibleAsset::amount()` returns `AssetAmount`, not `u64`.
+Host protocol `Asset` is also a struct, with `id() -> AssetId` and `value() -> AssetValue`.
+Use `Asset::new(id, value_word)?` or `Asset::from_id_and_value_words(id_word, value_word)?`.
+Convert a `FungibleAsset` with `.into()` and inspect with `asset.as_fungible()`;
+`Asset::Fungible` / `Asset::NonFungible` enum constructors and match arms are gone.
+The word accessors remain `to_id_word()` / `to_value_word()`. `FungibleAsset::amount()`
+returns `AssetAmount`, not `u64`.
 
 ## P8: Build Recipients with `note::build_recipient` (no `Recipient::compute`)
 
@@ -371,7 +375,8 @@ use alloc::vec;
 let recipient = note::build_recipient(
     serial_num,
     script_root,
-    vec![recipient_id.suffix, recipient_id.prefix],
+    // P2ID v0.17: use its current script root and include both salt elements.
+    vec![recipient_id.suffix, recipient_id.prefix, felt!(0), felt!(0)],
 );
 ```
 
@@ -435,7 +440,7 @@ Named enum variants (`NoteType::Private`, `NoteType::Public`) don't exist in con
 
 **Note-type encoding**: the note type is 1-bit — `Private = 0` (the protocol default) and `Public = 1`. Only these two values exist; there is no `Encrypted` type. The SDK wrapper does no validation, so an out-of-range value (e.g. `felt!(2)` or `felt!(3)`) is not caught at compile time — the kernel rejects it at execution time with `ERR_NOTE_INVALID_TYPE` (the output-note builder does `u32assert.err=ERR_NOTE_INVALID_TYPE u32lte.NOTE_TYPE_PUBLIC`).
 
-For a working conversion site, see `compiler:sdk/v0.14.0:examples/basic-wallet-tx-script/src/lib.rs`,
+For a working conversion site, see `compiler:sdk/v0.15.0:examples/basic-wallet-tx-script/src/lib.rs`,
 which turns a raw input felt into a note type with `note_type.into()` before calling the wallet's
 `create_note`.
 
@@ -452,7 +457,7 @@ must call an account component method, which then calls `native_account::add_ass
 The pattern, split across two pinned examples:
 
 ```rust
-// Note side — compiler:sdk/v0.14.0:examples/p2id-note/src/lib.rs
+// Note side — compiler:sdk/v0.15.0:examples/p2id-note/src/lib.rs
 #[account(basic_wallet::BasicWallet)]
 pub struct Wallet;
 
@@ -466,7 +471,7 @@ impl P2idNote {
     }
 }
 
-// Component side — compiler:sdk/v0.14.0:examples/basic-wallet/src/lib.rs
+// Component side — compiler:sdk/v0.15.0:examples/basic-wallet/src/lib.rs
 #[component]
 trait BasicWallet {
     #[account_procedure]
@@ -486,7 +491,7 @@ auto-implemented on the `#[component_storage]` struct; the free functions
 `native_account::add_asset(asset)` / `native_account::remove_asset(asset)` are equivalent.
 
 The alternative to an `#[account(..)]` wrapper is the generated-bindings free-function form, used by
-`compiler:sdk/v0.14.0:examples/counter-note/src/lib.rs`:
+`compiler:sdk/v0.15.0:examples/counter-note/src/lib.rs`:
 
 ```rust
 use crate::bindings::miden::counter_contract::counter_contract;
@@ -503,9 +508,9 @@ A `#[note]` struct **with fields** is auto-decoded from that storage: the macro 
 `TryFrom<&[Felt]>` that decodes each field via `FromFeltRepr` and then calls `ensure_eof()`, so
 extra trailing felts are a decode failure (`FeltReprError::TrailingData`), not ignored padding. A
 zero-sized `#[note]` struct skips `get_storage()` entirely. Manual slicing is still available —
-`compiler:sdk/v0.14.0:examples/p2ide-note/src/lib.rs` reads `active_note::get_storage()`
+`compiler:sdk/v0.15.0:examples/p2ide-note/src/lib.rs` reads `active_note::get_storage()`
 directly and asserts `inputs.len() == 4` — but the typed form in
-`compiler:sdk/v0.14.0:examples/p2id-note/src/lib.rs` (`#[note] struct P2idNote {
+`compiler:sdk/v0.15.0:examples/p2id-note/src/lib.rs` (`#[note] struct P2idNote {
 target_account_id: AccountId }`) is the shape to prefer.
 
 ## P13: Externally-Callable Methods Must Be Marked `#[account_procedure]`
@@ -537,15 +542,15 @@ Rules:
   `a component cannot combine #[auth_script] and #[account_procedure]`.
 - Inherent (`impl BankStorage`) methods are not exported at all, and "exported to WIT" is not the
   same thing as "is an account procedure".
-- The `cargo miden new` scaffolding under `compiler:sdk/v0.14.0:extra/templates/` omits
+- The `cargo miden new` scaffolding under `compiler:sdk/v0.15.0:extra/templates/` omits
   `#[account_procedure]`, so freshly-generated code is wrong out of the box. Use
-  `compiler:sdk/v0.14.0:examples/counter-contract/src/lib.rs` and
-  `compiler:sdk/v0.14.0:examples/basic-wallet/src/lib.rs` as the reference instead.
+  `compiler:sdk/v0.15.0:examples/counter-contract/src/lib.rs` and
+  `compiler:sdk/v0.15.0:examples/basic-wallet/src/lib.rs` as the reference instead.
 
 **MASM equivalent**: a hand-written or standards MASM component marks its exports with the
 `@account_procedure` / `@auth_script` attributes — "a procedure is part of the component interface
 if it has either the `@account_procedure` or `@auth_script` attributes". See
-`protocol:v0.16.0-rc.6:crates/miden-standards/asm/standards/wallets/basic.masm`.
+`protocol:v0.17.1:crates/miden-standards/asm/standards/wallets/basic.masm`.
 
 ## P14: Some Kernel Calls Are Legal Only in a Specific Runtime Context
 
@@ -559,7 +564,7 @@ Three restrictions enforced by the kernel, not the type system:
 | `native_account::{add_asset, remove_asset}` | an account-component procedure | `exec.memory::assert_native_account` + `exec.authenticate_account_origin` |
 | `native_account::incr_nonce()` / `self.incr_nonce()` | the account's `#[auth_script]` authentication procedure | `exec.memory::assert_native_account` + `exec.assert_auth_procedure_origin` |
 
-All three are in `protocol:v0.16.0-rc.6:crates/miden-protocol/asm/kernels/transaction/lib/api.masm`
+All three are in `protocol:v0.17.1:crates/miden-protocol/asm/kernels/transaction/lib/api.masm`
 (`pub proc output_note_create`, `pub proc account_add_asset`, `pub proc account_incr_nonce`).
 
 Consequences:
@@ -570,7 +575,7 @@ Consequences:
   Recipient) -> NoteIdx` for exactly this reason.
 - Calling `incr_nonce()` from an ordinary component method panics. Only the authentication
   component's single `#[auth_script]` method may do it — see
-  `compiler:sdk/v0.14.0:examples/auth-component-no-auth/src/lib.rs`.
+  `compiler:sdk/v0.15.0:examples/auth-component-no-auth/src/lib.rs`.
 
 **Auth components**: exactly one `#[auth_script]` method per `#[component]` trait, and a crate whose
 `miden-project.toml` sets `[package.metadata.miden] project-kind = "authentication-component"` must
@@ -586,23 +591,41 @@ have exactly one (`authentication components require exactly one #[auth_script] 
 | `active_note::get_assets()` | `active_note::get_initial_assets() -> Vec<Asset>` |
 | `input_note::get_assets(idx)` | `input_note::get_initial_assets(idx)` |
 | `input_note::get_assets_info(idx)` | `input_note::get_initial_assets_info(idx)` |
-| `active_account::get_balance` / `get_initial_balance` | `active_account::get_asset(asset_key: Word) -> Word` (or `native_account::get_initial_asset(asset_key: Word) -> Word`), then read the amount out of the value word |
-| `active_account::has_non_fungible_asset(asset)` | `active_account::has_asset(asset_id: Word) -> bool` |
-| `faucet::create_fungible_asset` / `create_non_fungible_asset` / `has_callbacks`, and the whole `asset` module | build the `Asset` outside the transaction; only `faucet::mint(Asset)` and `faucet::burn(Asset)` remain |
+| `active_account::get_balance` / `get_initial_balance` | `active_account::get_asset(asset_id: AssetId) -> Word` (or `native_account::get_initial_asset(asset_id: AssetId) -> Word`), then read the amount out of the value word |
+| `active_account::has_non_fungible_asset(asset)` | `active_account::has_asset(asset_id: AssetId) -> bool` |
+| `faucet::create_fungible_asset` / `create_non_fungible_asset` / `has_callbacks` | build the `Asset` outside the transaction; only `faucet::mint(Asset)` and `faucet::burn(Asset)` remain |
 | `AttachmentLocation` | `Option<u32>` from `find_attachment` |
-| `output_note::set_attachment` | append with `output_note::add_word_attachment`, `output_note::add_attachment`, or `output_note::add_attachment_from_memory` |
+| `output_note::set_word_attachment` | `output_note::add_word_attachment` (append a new single-word attachment) |
+| `output_note::set_array_attachment` | `output_note::add_attachment` for an advice-backed commitment, or `add_attachment_from_memory` for raw words |
 
-The output-note attachment APIs append attachment entries; they do not replace an existing attachment in place.
+All three replacement operations append a new attachment; none replaces an attachment already on
+the note.
+
+In SDK 0.15, `note::write_attachment_commitments_to_memory`,
+`note::write_attachment_to_memory`, and `note::write_indexed_attachment_to_memory`
+become `load_attachment_commitments`, `load_attachment`, and `load_indexed_attachment`.
+These helpers read advice-backed committed data. The active/input/output-note wrappers
+retain their `write_*_to_memory` names.
+
+`active_account::compute_commitment` moved to `native_account::compute_commitment`,
+and from `ActiveAccount` to `NativeAccount`. Call it inside a native account
+component; an `#[account]` wrapper used by a note or transaction script has no
+equivalent method. It cannot compute a foreign account's commitment through FPI.
 
 The current `active_account` surface is `get_id() -> AccountId`, `get_nonce() -> Nonce`,
-`compute_commitment() -> Word`, `get_code_commitment() -> Word`, `compute_storage_commitment() ->
-Word`, `get_asset(Word) -> Word`, `has_asset(Word) -> bool`, `get_vault_root() -> Word`,
+`get_code_commitment() -> Word`, `compute_storage_commitment() ->
+Word`, `get_asset(AssetId) -> Word`, `has_asset(AssetId) -> bool`, `get_vault_root() -> Word`,
 `get_num_procedures() -> u32`, `get_procedure_root(u32) -> Word`, `has_procedure(Word) -> bool` —
-all also available on the `ActiveAccount` trait.
+all also available on the `ActiveAccount` trait, which now also has
+`has_storage_slot(StorageSlotId) -> bool` (the free function is in `storage`).
 
 Initial-state getters live on `native_account` as free functions: `get_initial_commitment()`,
-`get_initial_storage_commitment()`, `get_initial_vault_root()`, `get_initial_asset(Word) -> Word`,
-plus `compute_delta_commitment()` and `was_procedure_called(Word) -> bool`.
+`get_initial_storage_commitment()`, `get_initial_vault_root()`, `get_initial_asset(AssetId) -> Word`,
+plus `compute_commitment()`, `compute_delta_commitment()`, `was_procedure_called(Word) -> bool`,
+`has_state_changed() -> bool` and `has_initial_asset(AssetId) -> bool`.
+The `miden::asset` module exposes `id_into_faucet_id`, `id_into_asset_class`, and `id_into_composition`.
+Use `tx::get_reference_block_commitment()` for the reference block;
+`tx::get_block_commitment(block_number)` now queries a tracked historical block.
 
 ## P16: Kernel Scalars Are Typed, Not `Felt`
 
@@ -610,7 +633,7 @@ plus `compute_delta_commitment()` and `was_procedure_called(Word) -> bool`.
 
 | Binding | Return type |
 |---|---|
-| `tx::get_block_number()` | `BlockNumber` |
+| `tx::get_reference_block_number()` | `BlockNumber` |
 | `tx::get_block_timestamp()` | `u32` (seconds) |
 | `tx::get_num_input_notes()` / `get_num_output_notes()` | `u32` |
 | `tx::get_expiration_block_delta()` | `u16` (and `update_expiration_block_delta(delta: u16)`) |
@@ -625,7 +648,7 @@ plus `compute_delta_commitment()` and `was_procedure_called(Word) -> bool`.
 Packing them back into a `Word` needs an explicit conversion:
 
 ```rust
-let ref_block_num = tx::get_block_number();
+let ref_block_num = tx::get_reference_block_number();
 let final_nonce = self.incr_nonce();
 let w = Word::from([felt!(0), felt!(0), ref_block_num.into(), final_nonce.into()]);
 ```
@@ -644,22 +667,24 @@ pub struct AssetId {
 }
 ```
 
-Word layout: `[asset_class_suffix, asset_class_prefix, [faucet_id_suffix | reserved | composition],
+Word layout: `[asset_class_suffix, asset_class_prefix, [faucet_id_suffix | reserved | composition | version],
 faucet_id_prefix]`. The actual SMT key is `AssetId::hash() -> AssetIdHash`.
 
 `AssetClass` is a *component of* `AssetId` — it distinguishes assets issued by the same
 faucet — not the asset id itself. Treating `AssetId` as the per-faucet class compiles and is
 silently wrong. The vault-key accessors are `Asset::id()` and `Asset::to_id_word()`, and the client
-re-exports `AssetId` (not `AssetClass`) from `miden_client::asset`.
+re-exports both `AssetId` and `AssetClass` from `miden_client::asset`.
 
 There is **no `AssetVaultKey` type** in either the protocol or the client — searching for one is a
 dead end, and a type of that name in your code or in generated bindings is stale. The vault-key type
 is `AssetId`, declared at
-`protocol:v0.16.0-rc.6:crates/miden-protocol/src/asset/vault/asset_id.rs:42` and re-exported by the
-client at `miden-client:v0.16.0-rc.2:crates/rust-client/src/lib.rs:195`.
+`protocol:v0.17.1:crates/miden-protocol/src/asset/vault/asset_id.rs` and re-exported by the
+client at `miden-client:v0.17.2:crates/rust-client/src/lib.rs`.
 
-On the guest side nothing renamed: `miden::Asset` still has a field literally named `key`, and that
-word is the asset-ID word (P7).
+Guest `miden::Asset` now has `id: AssetId`; use `asset.id.inner` for its word (P7).
+Asset IDs carry version bits. Old v0.16 fungible ID words no longer decode as fungible:
+the metadata byte changed from `0x01` to `0x11`. Rebuild them with current constructors
+instead of copying raw words.
 
 ## P18: `MAX_ASSETS_PER_NOTE` Is 16
 
@@ -669,47 +694,56 @@ word is the asset-ID word (P7).
 kernel's `constants.masm`). Any code that assumed 64 assets per note — fixed-size buffers, batching
 logic, test fixtures — needs resizing.
 
-## P19: A Transaction Summary Is Six Words (24 Felts)
+## P19: Transaction Summaries Use a Versioned Six-Word Preimage
 
-**Severity**: High — an auth procedure hashing a four-word layout compiles and fails at runtime
+**Severity**: High — hashing the v0.16 layout can compile but produces invalid signatures
 
 `TransactionSummary::NUM_ELEMENTS` covers six words. The standards MASM matches with
 `const TX_SUMMARY_NUM_ELEMENTS = 24` and six word-sized locals
-(`SUMMARY_ACCOUNT_DELTA_LOC = 0`, `SUMMARY_INPUT_NOTES_LOC = 4`, `SUMMARY_OUTPUT_NOTES_LOC = 8`,
-`SUMMARY_BLOCK_COMMITMENT_LOC = 12`, `SUMMARY_PARAMS_HEAD_LOC = 16`,
-`SUMMARY_PARAMS_TAIL_LOC = 20`), and
-`pub proc create_tx_summary(user_params: [felt; 7]) -> (word, word, word, word, word, word)`.
+(`SUMMARY_PARAMS_HEAD_LOC = 0`, `SUMMARY_PARAMS_TAIL_LOC = 4`,
+`SUMMARY_ACCOUNT_DELTA_LOC = 8`, `SUMMARY_INPUT_NOTES_LOC = 12`,
+`SUMMARY_OUTPUT_NOTES_LOC = 16`, `SUMMARY_BLOCK_COMMITMENT_LOC = 20`), and
+`pub proc create_tx_summary(user_params: [felt; 6])` returns six words.
 
-Preimage order:
+The v0.17 summary is still 24 felts, but the two parameter words come first. It binds a
+version (`1`) and the bound block number, leaving six user parameters. Singlesig
+binds the reference block; multisig binds `MultisigAuthArgs::bound_block_num`:
 
 ```text
-[ACCOUNT_DELTA_COMMITMENT, INPUT_NOTES_COMMITMENT, OUTPUT_NOTES_COMMITMENT,
- BLOCK_COMMITMENT, [expiration_delta, user_param0..2], [user_param3..6]]
+[[1, expiration_delta << 32 | bound_block_number, user_param0, user_param1],
+ [user_param2, user_param3, user_param4, user_param5],
+ ACCOUNT_DELTA_COMMITMENT, INPUT_NOTES_COMMITMENT, OUTPUT_NOTES_COMMITMENT,
+ BOUND_BLOCK_COMMITMENT]
 ```
 
-Sources: `protocol:v0.16.0-rc.6:crates/miden-protocol/src/transaction/tx_summary.rs` and
-`protocol:v0.16.0-rc.6:crates/miden-standards/asm/standards/auth/mod.masm`.
+Sources: `protocol:v0.17.1:crates/miden-protocol/src/transaction/tx_summary.rs` and
+`protocol:v0.17.1:crates/miden-standards/asm/standards/auth/mod.masm`.
+
+Use the current standard auth components where possible. Custom auth must hash this
+layout using the chosen bound block. Fees use the native asset from `ProtocolConfig` at
+rate 1/1; the old fee-conversion helpers are gone. Multisig must supply `MultisigAuthArgs`
+even on fee-free chains; see `rust-client-patterns` for request preparation.
 
 ## P20: Match the Project Version Line and Keep Build Tools Separate
 
 **Severity**: High - mixing lower bounds, resolved lockfile versions, and build tools creates false migrations
 
-The current project-template uses published final contract SDK crates and release-candidate host crates. Copy the local manifests and lockfile before changing versions:
+The current project-template uses published v0.17 host crates and contract SDK v0.15. Copy the local manifests and lockfile before changing versions:
 
 ```toml
 # contracts/<name>/Cargo.toml
-miden = { version = "0.14" }
-miden-sdk-build-script-support = { version = "0.14" }
+miden = { version = "0.15.0" }
+miden-sdk-build-script-support = { version = "0.15.0" }
 
 # integration/Cargo.toml
-miden-client = { version = "0.16.0-rc.1", features = ["tonic"] }
-miden-client-sqlite-store = { version = "0.16.0-rc.1", package = "miden-client-sqlite-store" }
-miden-standards = { version = "0.16.0-rc.4", features = ["testing"] }
-miden-testing = "0.16.0-rc.4"
-miden-mast-package = { version = "0.29", default-features = false }
+miden-client = { version = "0.17.0", features = ["tonic"] }
+miden-client-sqlite-store = { version = "0.17.0", package = "miden-client-sqlite-store" }
+miden-standards = { version = "0.17.0", features = ["testing"] }
+miden-testing = "0.17.0"
+miden-mast-package = { version = "0.35.0", default-features = false }
 ```
 
-`Cargo.lock` currently resolves `miden-client` / `miden-client-sqlite-store` to `0.16.0-rc.2`, protocol/standards/testing to `0.16.0-rc.6`, and VM/package crates such as `miden-mast-package` to `0.29.4`. Treat the manifest requirements as lower bounds and the lockfile as the exact local graph.
+`Cargo.lock` currently resolves `miden-client` / `miden-client-sqlite-store` to `0.17.2`, protocol/standards/testing to `0.17.1`, and VM/package crates such as `miden-mast-package` to `0.35.0`. Treat the manifest requirements as lower bounds and the lockfile as the exact local graph.
 
 **MSRV split**: use the highest applicable toolchain. The published SDK and `cargo-miden` line require Rust 1.99, and this project pins `nightly-2026-09-01` with target `wasm32-wasip2` for contract builds.
 
@@ -727,7 +761,7 @@ spellings: `lib` / `library`, `kernel`, `account` / `account-component`, `note`,
 a library`.
 
 Full account-component manifest, matching
-`compiler:sdk/v0.14.0:examples/counter-contract/miden-project.toml`:
+`compiler:sdk/v0.15.0:examples/counter-contract/miden-project.toml`:
 
 ```toml
 [package]
@@ -759,7 +793,7 @@ authoritative: a `wit` override is rejected when the package embeds WIT, and is 
 for packages without embedded WIT.
 
 For plain Cargo checks, builds, and IDE analysis with source dependencies, the **consuming crate**
-must have `miden-sdk-build-script-support = { version = "0.14" }` under `[build-dependencies]` and
+must have `miden-sdk-build-script-support = { version = "0.15.0" }` under `[build-dependencies]` and
 call `miden_sdk_build_script_support::prepare_package_cache()` from its own `build.rs`. This
 prepares `MIDENC_PACKAGE_CACHE` for that crate's macro expansion; the dependency crate's hook
 does not configure its consumers. `cargo miden build`, a direct `.masp` dependency, or an already
@@ -783,12 +817,17 @@ valid package cache bypasses that requirement.
   imports are rejected.
 - **`debug.*` decorators are gone.** `debug.stack.4`, `debug.mem`, `debug.local.0.2` and
   `debug.adv_stack.4` are rejected by the parser. The replacement is the `miden::core::debug`
-  module (`miden-vm:v0.29.4:crates/lib/core/asm/debug.masm`), exporting `print_stack`, `print_mem`,
+  module (`miden-vm:v0.35.0:crates/lib/core/asm/debug.masm`), exporting `print_stack`, `print_mem`,
   `print_mem_addr`, `print_mem_all`, `print_adv_stack`, `print_adv_stack_all`, `print_adv_map_all`,
   `print_adv_map_item`. These are **ordinary procedure calls that print unconditionally**,
   regardless of debug mode, and the ones taking stack inputs consume them — strip them from
   production code. The advice-stack / advice-map printers additionally need host handlers
   registered.
+- **`trace` is available again in VM 0.35.** Use `trace.CONST` with a constant
+  defined by `event("...")`, or `trace.event("...")`; numeric immediates such as
+  `trace.5` are rejected. These forms expand to five VM operations and leave the
+  stack unchanged. Plain `trace` expands to three operations and leaves its ID
+  on the stack. Register a read-only trace handler on the host when using it.
 - **`.masl` is gone.** The artefact is a `Package` with extension `.masp` (magic `b"MASP\0"`);
   `Library` and `KernelLibrary` were deleted. `Assembler::link_package(Arc<Package>, Linkage)` and
   `Assembler::with_package(..)` are the linking entry points, kernels come in via

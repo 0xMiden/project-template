@@ -22,7 +22,7 @@ Rule of thumb: if the task involves more than one contract or a pattern not cove
 
 This is the single highest-leverage practice for AI-assisted Miden development.
 
-**Build loop**: After every contract edit, run `cargo miden build --manifest-path contracts/<name>/Cargo.toml --release` from the project root (adjust the path to your contract layout). With the midenup `miden` wrapper, run `miden build --release` from the contract directory instead: `miden build --manifest-path ...` alone does not select that contract from the workspace root. The output is a `.masp` package written under `<target_dir>/<profile>/`. If your project has a build hook configured, it may run this automatically. If the build fails:
+**Build loop**: After every contract edit, run `cargo miden build --manifest-path contracts/<name>/Cargo.toml --release` from the project root (adjust the path to your contract layout). The midenup v0.17 wrapper also supports `miden build --manifest-path contracts/<name>/Cargo.toml --release` from the workspace root. The output is a `.masp` package written under `<target_dir>/<profile>/`. If your project has a build hook configured, it may run this automatically. If the build fails:
 1. Read the error message
 2. Translate obvious SDK/compiler errors first:
    - `.as_u64()` -> `.as_canonical_u64()`
@@ -51,7 +51,7 @@ The basic skills (rust-sdk-patterns, rust-sdk-testing-patterns, miden-concepts, 
 - Read source files only when you need a specific answer (progressive disclosure)
 - Look for working examples first, then adapt. Working code that compiles is more reliable than documentation.
 - When you find a useful pattern in source, extract just what you need — the exact API call, the exact data layout, the exact test setup.
-- Start API questions at `compiler/sdk/sdk/MIGRATION.md`. Its `## Unreleased` section is the authoritative, hand-written list of what changed on the Rust contract surface, with before/after code for each break. `compiler/sdk/CHANGELOG.md` is the companion. For an exact signature, go to `compiler/sdk/base-sys/src/bindings/*.rs`.
+- Start v0.17 release migrations with the [merged migration guide](https://github.com/0xMiden/docs/blob/9911d004142687ad7d06f72aa03284df54ae9922/docs/builder/migration/index.md). For the guest API, consult `compiler/sdk/sdk/MIGRATION.md` and `compiler/sdk/CHANGELOG.md` at the selected release tag. Verify exact signatures in `compiler/sdk/base-sys/src/bindings/*.rs`.
 
 **Using sub-agents for exploration**:
 - Launch an explore sub-agent with a specific question: "Find how the basic-wallet component creates an output note and moves an asset into it (`compiler/examples/basic-wallet/src/lib.rs`)"
@@ -75,20 +75,57 @@ When stuck at any stage: search the source repos for a similar working pattern. 
 
 ## Which Version Is Which
 
-The three-way version skew is the most confusing thing about this stack. These are four independent
-release lines:
+The SDK, compiler, protocol, client, and VM use independent version numbers. Match their
+compatible release lines:
 
 | Line | Crates | Version | MSRV |
 |---|---|---|---|
-| Contract SDK (guest) | `miden`, `miden-base`, `miden-base-macros`, `miden-base-sys`, `miden-stdlib-sys`, `miden-sdk-alloc` | project manifests use `0.14`, resolving to published `0.14.0` | Rust 1.99 + nightly `2026-09-01`, target `wasm32-wasip2` |
-| Compiler / build tool | compiler workspace, `midenc`, `cargo-miden` | `cargo-miden` `0.10.0`, usually installed through midenup / cargo-miden | Rust 1.99 |
-| Protocol | `miden-protocol`, `miden-standards`, `miden-testing`, `miden-tx`, `miden-tx-batch`, `miden-block-prover`, `miden-agglayer` | integration manifests lower-bound standards/testing at `0.16.0-rc.4`; `Cargo.lock` resolves protocol/standards/testing to `0.16.0-rc.6` | see each crate |
-| Client | `miden-client`, `miden-client-sqlite-store` | integration manifests lower-bound at `0.16.0-rc.1`; `Cargo.lock` resolves both to `0.16.0-rc.2` | see each crate |
-| VM / package crates | `miden-assembly`, `miden-assembly-syntax`, `miden-core`, `miden-core-lib`, `miden-crypto`, `miden-mast-package`, `miden-processor`, `miden-project`, `miden-prover` | `Cargo.lock` resolves package crates such as `miden-mast-package` to `0.29.4` | see each crate |
+| Contract SDK (guest) | `miden`, `miden-base`, `miden-base-macros`, `miden-base-sys`, `miden-stdlib-sys`, `miden-sdk-alloc` | project manifests use published `0.15.0` | Rust 1.99 + nightly `2026-09-01`, target `wasm32-wasip2` |
+| Compiler / build tool | compiler workspace, `midenc`, `cargo-miden` | `cargo-miden` `0.11.0`, usually installed through midenup / cargo-miden | Rust 1.99 |
+| Protocol | `miden-protocol`, `miden-standards`, `miden-testing`, `miden-tx`, `miden-tx-batch`, `miden-block-prover`, `miden-agglayer`, `miden-objects` | integration manifests lower-bound standards/testing at `0.17.0`; `Cargo.lock` resolves protocol/standards/testing to `0.17.1` | Rust 1.98.1 |
+| Client | `miden-client`, `miden-client-sqlite-store` | integration manifests lower-bound at `0.17.0`; `Cargo.lock` resolves both to `0.17.2` | Rust 1.98.1 |
+| VM / package crates | `miden-assembly`, `miden-assembly-syntax`, `miden-core`, `miden-core-lib`, `miden-crypto`, `miden-mast-package`, `miden-processor`, `miden-project`, `miden-prover` | `Cargo.lock` resolves package crates such as `miden-mast-package` to `0.35.0` | Rust 1.96.1 |
 
-For published final crates, follow the local manifests: contract crates use `miden = { version = "0.14" }` and matching `miden-sdk-build-script-support = { version = "0.14" }`. Full pre-release strings matter for release-candidate dependencies such as `miden-client = { version = "0.16.0-rc.1" }`, `miden-standards = { version = "0.16.0-rc.4" }`, and `miden-testing = "0.16.0-rc.4"`; read both `integration/Cargo.toml` and `Cargo.lock` before changing version requirements.
+Follow the local manifests and lockfile: contracts require SDK/build support `0.15.0`, host manifests require client/protocol `0.17.0`, and the lockfile records compatible patch releases. The midenup toolchain channel is `0.17.0` and package/VM crates use `0.35.0`. Read both requirements and resolved versions before changing them.
 
 Keep the build tool out of the integration crate's dependency graph. The current project builds contracts out of process with midenup / cargo-miden via `build_project_in_dir(...)`, then tests those packages with the client, standards, and `miden-testing` libraries resolved in `Cargo.lock`.
+
+At `sdk/v0.15.0`, the compiler manifest requires protocol and standards `0.17.0` and
+VM `0.35.0`. Keep that internal build matrix separate from the application's resolved
+client/protocol versions above.
+
+Rebuild `.masp` packages with this toolchain (package format `7.0.0`). v0.16 proofs, stores,
+account/note exports and serialized requests cannot be reused. Client, node, remote prover and
+note transport must all support the v0.17 protocol. Preserve real keys and consume pending
+private notes before planning a store migration; do not blindly reset a user's state.
+
+### Host VM and proof integrations
+
+When a project embeds the VM instead of using only the client, also apply the
+[VM migration guide](https://github.com/0xMiden/docs/blob/9911d004142687ad7d06f72aa03284df54ae9922/docs/builder/migration/09-vm-assembler.md):
+
+- Execute through `FastProcessor::new_with_options(...)?` and `execute_sync` /
+  `execute`; the free execution functions are removed. Construction can return
+  `AdviceError`.
+- Configure `Prover` instead of `ProvingOptions`. `Prover::new()` uses Blake3_256,
+  while `LocalTransactionProver::default()` uses Poseidon2; choose explicitly for
+  custom transaction provers.
+- `Verifier::new().verify(&claim, &proof)` returns `VerificationOutcome`. A
+  successful result may still have outstanding precompile work: require
+  `is_complete()` for a fully proven claim, or settle that work before accepting
+  it. Configure the application's required security level explicitly.
+- `CoreLibrary::package()` now includes precompiles; remove the separate
+  `miden-precompiles` package and compiler link flag. `mast_forest()` still exists.
+  Custom transaction hosts also need the matching standards package for linked
+  standard procedures.
+- Package readers ending in `_trusted` skip validation. Use validating readers
+  for external packages; do not mechanically replace `_unchecked` with `_trusted`.
+  `Package::digest()` is replaced by layered commitments: choose code identity
+  or full package identity deliberately.
+- `Word` and Merkle types no longer implement serde, and VM crates no longer
+  expose the old `serde` / `bus-debugger` features. Use supported encoding
+  adapters or explicit byte/hex representations for application wire formats;
+  see the [crypto migration guide](https://github.com/0xMiden/docs/blob/9911d004142687ad7d06f72aa03284df54ae9922/docs/builder/migration/02-hashing-crypto.md).
 
 ---
 
@@ -98,16 +135,16 @@ Clone these repos alongside your project for reference. Claude will explore them
 
 ```bash
 # Required: protocol layer, standard note types and account components (crate: miden-protocol)
-git clone --branch v0.16.0-rc.6 https://github.com/0xMiden/protocol.git ../protocol
+git clone --branch v0.17.1 https://github.com/0xMiden/protocol.git ../protocol
 
 # Required: client API for deployment and chain interaction (crate: miden-client)
-git clone --branch v0.16.0-rc.2 https://github.com/0xMiden/miden-client.git ../miden-client
+git clone --branch v0.17.2 https://github.com/0xMiden/rust-sdk.git ../rust-sdk
 
 # Required: the Rust SDK macros and compiler; the sdk tag names the guest SDK version.
-git clone --branch sdk/v0.14.0 https://github.com/0xMiden/compiler.git ../compiler
+git clone --branch sdk/v0.15.0 https://github.com/0xMiden/compiler.git ../compiler
 
 # Optional: the VM, assembler, and package format, when you need MASM or `.masp` internals
-git clone --branch v0.29.4 https://github.com/0xMiden/miden-vm.git ../miden-vm
+git clone --branch v0.35.0 https://github.com/0xMiden/miden-vm.git ../miden-vm
 ```
 
 `--depth 1` is intentionally omitted so you can check out other refs later if needed.
@@ -116,7 +153,7 @@ git clone --branch v0.29.4 https://github.com/0xMiden/miden-vm.git ../miden-vm
 
 Contains the SDK that powers the `#[component_storage]`, `#[component]`, `#[account_procedure]`, `#[auth_script]`, `#[account]`, `#[note]`, `#[note_script]` and `#[tx_script]` macros.
 
-- **`compiler/examples/`** — exactly 12 working example projects, and the most reliable reference for
+- **`compiler/examples/`** — working example projects, and the most reliable reference for
   "how do I write X":
 
   | Example | Shows |
@@ -136,10 +173,10 @@ Contains the SDK that powers the `#[component_storage]`, `#[component]`, `#[acco
   `protocol/crates/miden-standards/src/account/faucets/fungible/mod.rs` (the `FungibleFaucet`
   component) or the compiler's own `compiler/tests/integration/src/sdk/base/faucet.rs` binding test.
 
-- **`compiler/sdk/`** — the guest SDK, and at v0.16 the single most authoritative API reference. Whitelisted
+- **`compiler/sdk/`** — the guest SDK, and at v0.17 the single most authoritative API reference. Whitelisted
   for exploration:
-  - `compiler/sdk/sdk/MIGRATION.md` — start here; the `## Unreleased` section is the v0.16 contract-surface
-    change list with before/after code
+  - `compiler/sdk/sdk/MIGRATION.md` — guest API migration notes; use the merged v0.17 guide above
+    for the complete release changes
   - `compiler/sdk/CHANGELOG.md`
   - `compiler/sdk/base-sys/src/bindings/` — the exact signature of every kernel binding
     (`active_account.rs`, `native_account.rs`, `active_note.rs`, `input_note.rs`, `output_note.rs`,
@@ -197,7 +234,7 @@ The protocol repo (`github.com/0xMiden/protocol`; primary crate `miden-protocol`
   `protocol/crates/miden-testing/src/mock_chain/chain_builder.rs` (`MockChainBuilder`),
   `protocol/crates/miden-testing/src/mock_transaction/builder.rs` (`MockTransactionBuilder`).
   `protocol/crates/miden-testing/src/kernel_tests/tx/` is the
-  canonical worked usage of the rc.6 API against a MockChain.
+  canonical worked usage of the v0.17 API against a MockChain.
 
 **Note on standard components**: `miden-standards` ships them as MASM
 (`protocol/crates/miden-standards/asm/standards/wallets/basic.masm`,
@@ -212,17 +249,17 @@ data layouts, and the canonical MASM shape.
 
 **Explore when**: Understanding note flows, P2ID/SWAP/faucet data layouts, or what SDK functions actually do under the hood (via the kernel MASM).
 
-### `miden-client/` - Client Library (crate `miden-client`)
+### `rust-sdk/` — Client Library (crate `miden-client`)
 
-The client repo is `https://github.com/0xMiden/miden-client`; the published crate is `miden-client`,
-and the CLI source lives under `bin/miden-cli/`.
+The client repo is `https://github.com/0xMiden/rust-sdk`; the published crate is `miden-client`,
+and the library source lives in `rust-sdk/crates/rust-client/`.
 
 - Rust client for building transactions, syncing state, managing accounts and notes
 - Re-exports the protocol types you need at the boundary, e.g. `miden_client::note::P2idNote`,
   `miden_client::note::NoteScriptRoot`, `miden_client::asset::AssetId`
-- `miden-client/bin/miden-cli/` is CLI tool source, useful as a reference for client usage patterns
+- `rust-sdk/bin/miden-cli/` is CLI tool source, useful as a reference for client usage patterns
 
-**Explore when**: Deploying contracts to testnet, submitting transactions, syncing state, managing notes on-chain.
+**Explore when**: Deploying contracts to a matching v0.17 network, submitting transactions, syncing state, managing notes on-chain.
 
 ### `miden-vm/` — VM, Assembler, and Package Format
 
@@ -253,7 +290,7 @@ Only needed for MASM or artefact-level questions, but authoritative for them:
 | P2ID output notes | `compiler/examples/basic-wallet/src/lib.rs`, `protocol/crates/miden-standards/src/note/p2id.rs` | `note::build_recipient`, `P2idNote::script_root()`, `output_note::create` wrapped as an account procedure |
 | Swap notes | `protocol/crates/miden-standards/src/note/swap.rs` | SwapNote data layout, tag construction, payback flow |
 | Multi-step / multi-contract tests | `compiler/tests/integration-network/src/mockchain/`, `protocol/crates/miden-testing/src/kernel_tests/tx/` | MockChain setup, init → operate → verify flow, output-note verification, storage-slot names |
-| Client deployment | `miden-client/` | TransactionRequestBuilder, sync, submit patterns |
+| Client deployment | `rust-sdk/crates/rust-client/` | TransactionRequestBuilder, sync, submit patterns |
 | SDK binding signatures | `compiler/sdk/base-sys/src/bindings/*.rs`, `compiler/sdk/sdk/MIGRATION.md` | exact Rust signature and return type of every kernel binding |
 | SDK function internals | `protocol/crates/miden-protocol/asm/kernels/transaction/lib/api.masm` → `protocol/crates/miden-protocol/asm/kernels/transaction-core/src/*.masm` → `protocol/crates/miden-protocol/asm/protocol/src/*.masm` | `api.masm` for signatures + context assertions, `protocol/crates/miden-protocol/asm/kernels/transaction-core/src/` for implementations, `protocol/crates/miden-protocol/asm/protocol/src/` for the userspace wrappers the bindings call |
 

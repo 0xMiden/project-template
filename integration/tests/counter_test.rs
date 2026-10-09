@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use anyhow::Context;
 use integration::helpers::{build_project_in_dir, counter_storage_slot, COUNTER_STORAGE_KEY};
@@ -7,13 +7,11 @@ use miden_client::{
         component::InitStorageData, AccountBuilder, AccountComponent, AccountType, StorageMapKey,
     },
     auth::AuthSchemeId,
-    crypto::RandomCoin,
-    note::NoteScript,
     transaction::RawOutputNote,
-    Word,
 };
 use miden_standards::testing::note::NoteBuilder;
 use miden_testing::{AccountState, Auth, MockChain};
+use rand::{rngs::StdRng, SeedableRng};
 
 #[tokio::test]
 async fn counter_test() -> anyhow::Result<()> {
@@ -26,21 +24,15 @@ async fn counter_test() -> anyhow::Result<()> {
     })?;
 
     // Build contracts
-    let contract_package = Arc::new(build_project_in_dir(
-        Path::new("../contracts/counter-account"),
-        true,
-    )?);
-    let note_package = Arc::new(build_project_in_dir(
-        Path::new("../contracts/increment-note"),
-        true,
-    )?);
+    let contract_package = build_project_in_dir(Path::new("../contracts/counter-account"), true)?;
+    let note_package = build_project_in_dir(Path::new("../contracts/increment-note"), true)?;
 
     // Create the counter account with its initial storage through the component schema.
     let counter_storage_slot = counter_storage_slot()?;
     let mut init_storage_data = InitStorageData::default();
     init_storage_data.insert_map_entry(counter_storage_slot.clone(), COUNTER_STORAGE_KEY, 0_u64)?;
 
-    let counter_component = AccountComponent::from_package(&contract_package, &init_storage_data)
+    let counter_component = AccountComponent::from_package(contract_package, &init_storage_data)
         .context("failed to build account component from counter package")?;
     let counter_account = builder.add_account_from_builder(
         Auth::BasicAuth {
@@ -52,13 +44,9 @@ async fn counter_test() -> anyhow::Result<()> {
         AccountState::Exists,
     )?;
 
-    let mut note_rng = RandomCoin::new(Word::from(
-        NoteScript::from_package(note_package.as_ref())
-            .context("failed to build note script from package")?
-            .root(),
-    ));
+    let mut note_rng = StdRng::seed_from_u64(0);
     let counter_note = NoteBuilder::new(sender.id(), &mut note_rng)
-        .package((*note_package).clone())
+        .package(note_package)
         .build()
         .context("failed to build counter note from package")?;
 
@@ -85,7 +73,10 @@ async fn counter_test() -> anyhow::Result<()> {
     let count = mock_chain
         .committed_account(counter_account.id())?
         .storage()
-        .get_map_item(&counter_storage_slot, StorageMapKey::new(COUNTER_STORAGE_KEY))
+        .get_map_item(
+            &counter_storage_slot,
+            StorageMapKey::new(COUNTER_STORAGE_KEY),
+        )
         .expect("Failed to get counter value from storage slot");
 
     // Map values are returned as scalar words in `[value, 0, 0, 0]` layout.
